@@ -157,9 +157,11 @@ def mac_address(value):
 class Service(ServiceDetails):
     client_id: UUID
     site_id: UUID
+    initial_status: Literal["PENDING", "ACTIVE"] | None = None
 
 
 class InitialSite(SiteDetails):
+    name: Name | None = None
     use_client_address: bool = False
 
     @model_validator(mode="after")
@@ -170,6 +172,19 @@ class InitialSite(SiteDetails):
             raise ValueError("Selecciona la dirección del cliente o registra una dirección diferente.")
         if not self.use_client_address and not self.address:
             raise ValueError("Registra la dirección del sitio.")
+        if not self.use_client_address and not self.name:
+            raise ValueError("Registra el nombre del sitio.")
+        return self
+
+
+class EquipmentSelection(Input):
+    model_id: UUID | None = None
+    device_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def exactly_one(self):
+        if bool(self.model_id) == bool(self.device_id):
+            raise ValueError("Selecciona un modelo o una unidad disponible.")
         return self
 
 
@@ -178,6 +193,8 @@ class Registration(Client):
     service: ServiceDetails | None = None
     site: InitialSite | None = None
     installation_situation: InstallationSituation = "UNDEFINED"
+    initial_status: Literal["PENDING", "ACTIVE"] | None = None
+    equipment: EquipmentSelection | None = None
 
     @model_validator(mode="after")
     def complete(self):
@@ -185,8 +202,8 @@ class Registration(Client):
             raise ValueError("El alta de un servicio requiere un sitio.")
         if self.site and self.site.use_client_address and not self.address:
             raise ValueError("Completa primero la dirección del cliente.")
-        if self.installation_situation != "UNDEFINED" and not self.service:
-            raise ValueError("La situación de instalación requiere un servicio.")
+        if (self.installation_situation != "UNDEFINED" or self.initial_status or self.equipment) and not self.service:
+            raise ValueError("El estado inicial y la asignación de equipo requieren un servicio.")
         return self
 
 
@@ -206,11 +223,15 @@ class Placement(Input):
 
 class Assignment(Placement):
     reason: Note
+    only_available: bool = False
 
 
 class Device(Placement):
     name: Name
-    device_type: Short
+    device_type: Short | None = None
+    type_id: UUID | None = None
+    manufacturer_id: UUID | None = None
+    model_id: UUID | None = None
     device_role: Role
     brand: Short | None = None
     model: Short | None = None

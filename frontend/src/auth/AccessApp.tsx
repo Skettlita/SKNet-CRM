@@ -4,6 +4,7 @@ import { AdminConnectivity, IspConnectivity } from "../connectivity/Connectivity
 import { CrmCatalog } from "../enterprise/Catalog"
 import { CrmDetail } from "../enterprise/Detail"
 import { Installations } from "../enterprise/Installations"
+import { InventoryCatalogs, InventoryStock } from "../enterprise/Inventory"
 import { catalogs } from "../enterprise/model"
 import type { Kind } from "../enterprise/model"
 import { FoundationDashboard } from "../FoundationDashboard"
@@ -49,6 +50,8 @@ const pageConfig: Record<string, { title: string; permission?: string; scope?: S
   "/infrastructure": { title: "Infraestructura", permission: "infrastructure.read", scope: "isp" },
   "/installations": { title: "Instalaciones", permission: "installations.read", scope: "isp" },
   "/installations/:id": { title: "Instalación", permission: "installations.read", scope: "isp" },
+  "/stock": { title: "Stock de equipos", permission: "inventory.read", scope: "isp" },
+  "/catalogs": { title: "Catálogos", permission: "inventory.read", scope: "isp" },
   "/connectivity": { title: "Conectividad", permission: "connectivity.read", scope: "isp" },
   "/monitoring": { title: "Monitoreo ICMP", permission: "monitoring.read", scope: "isp" },
   "/incidents": { title: "Incidentes", permission: "monitoring.read", scope: "isp" },
@@ -112,6 +115,8 @@ function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
       case "/monitoring": content = <MonitoringList account={account} />; break
       case "/incidents": content = <IncidentsPage account={account} />; break
       case "/installations": case "/installations/:id": content = <Installations account={account} id={id || undefined} />; break
+      case "/stock": content = <InventoryStock account={account} />; break
+      case "/catalogs": content = <InventoryCatalogs account={account} />; break
       case "/collectors": content = <AdminConnectivity account={account} view="collectors" />; break
       case "/vpn": content = <AdminConnectivity account={account} view="vpn" />; break
       case "/network-pools": content = <AdminConnectivity account={account} view="pools" />; break

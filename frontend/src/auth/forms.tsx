@@ -69,7 +69,7 @@ export function ActionForm({ children, submit, label, cancel }: {
         const matched: Record<string, string> = {}
         const names = new Set(Array.from(form.current?.elements ?? [], (item) => item.getAttribute("name")))
         for (const [path, detail] of Object.entries(error.fields)) {
-          const key = path.replace(/^site\./, "initial_").replace(/^address\./, "customer_").replace(/^service\./, "")
+          const key = path.replace(/^site\./, "initial_").replace(/^address\./, "customer_").replace(/^(service|equipment)\./, "")
           const field = [key, path, key.split(".")[0]].find((candidate) => names.has(candidate))
           if (field) matched[field] = detail
         }

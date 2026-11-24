@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from test_access import admin_id, login, migrated, request
-from test_crm import CRM, get, make, make_plan
+from test_crm import CRM, catalog_id, get, make, make_plan
 from test_crm_workflow import customer, initial
 from test_platform import accepted, authentication, manual_signup
 
@@ -14,8 +14,9 @@ def test_installation_order_activation_and_cancellation(migrated, admin_id):
         accepted(login(isp, "isp", "isp-instalaciones"))
         plan = make_plan(isp)
         entry = make(isp, "clients/register", customer("Alta con orden") | initial(plan, situation="NEW"))
-        order = entry["installation"]
         svc = entry["service"]
+        assert entry["installation"] is None
+        order = make(isp, "installations", {"service_id": svc["id"], "reason": "Registrar orden histórica"})
         assert order["installation_code"] == "INS-000001" and svc["status"] == "PENDING"
         order_path = CRM + "installations/" + order["id"]
         assert request(isp, "POST", CRM+"installations", {"service_id": svc["id"], "reason": "Duplicada"}).status_code == 409
@@ -26,7 +27,8 @@ def test_installation_order_activation_and_cancellation(migrated, admin_id):
         for when in ("2027-01-02T14:00:00Z", "2027-01-03T14:00:00Z"):
             accepted(request(isp, "POST", order_path+"/status", {"status": "SCHEDULED", "reason": "Programación", "scheduled_at": when}))
         device = accepted(request(isp, "POST", order_path+"/devices", {
-            "new_device": {"name": "ONT nueva", "device_type": "ONT"}, "link_service": True, "ip_mode": "SERVICE", "reason": "Asignación",
+            "new_device": {"name": "ONT nueva", "type_id": catalog_id(isp, "types", "ONT")},
+            "link_service": True, "ip_mode": "SERVICE", "reason": "Asignación",
         }), 201)
         assert device["assignment_state"] == "ASSIGNED" and device["effective_ip"] == "172.16.10.21"
         accepted(request(isp, "POST", order_path+"/status", {"status": "IN_PROGRESS", "reason": "Inicio"}))

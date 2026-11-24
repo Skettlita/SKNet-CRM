@@ -91,6 +91,14 @@ def test_measurements_tenant_incidents_and_recovery(migrated, admin_id, monkeypa
         valid = sample(0, 5)
         assert send(valid)["accepted"] == 1
         assert send(valid)["accepted"] == 0
+        short_period = accepted(request(isp, "GET", "isp/monitoring/devices/"+configured["id"]+"?period=30m"))
+        buckets = [item for item in short_period["series"] if item["valid_samples"]]
+        assert len(short_period["series"]) == 16 and len(buckets) == 1
+        assert float(buckets[0]["availability"]) == 100 and float(buckets[0]["latency"]) == 20
+        assert all(item["loss"] is None for item in short_period["series"] if not item["valid_samples"])
+        choices = accepted(request(isp, "GET", "isp/monitoring/device-types"))["items"]
+        listed = accepted(request(isp, "GET", "isp/monitoring/devices?type_id="+choices[0]["id"]))["items"]
+        assert any(item["id"] == unapproved["id"] and item["eligibility_reason"] == "UNAUTHORIZED_NETWORK" for item in listed)
         state("UP")
         send(sample(1, 5, 205))
         state("DEGRADED")

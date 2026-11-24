@@ -4,7 +4,7 @@ import { PageHeading } from "../auth/AccessManagement"
 import type { Account } from "../auth/api"
 import { DataTable, DataView, Panel, Pagination, Search, Select, Status, dateText, searchPath, useData, usePager } from "../platform/shared"
 import type { Page } from "../platform/shared"
-import { Relation, allowed, appPath, asText, deviceCategories, optionsLabel, roles } from "./model"
+import { Relation, allowed, appPath, asText, deviceCategories, optionsLabel, roles, useOptions } from "./model"
 import type { Entry } from "./model"
 
 const endpoint = "/monitoring"
@@ -12,6 +12,11 @@ const states = ["UP", "DEGRADED", "DOWN", "UNREACHABLE", "STALE", "UNKNOWN", "UN
 const labels: Record<string, string> = { UP: "Disponible", DEGRADED: "Degradado", DOWN: "Caído", UNREACHABLE: "Inalcanzable",
   STALE: "Datos vencidos", UNKNOWN: "Sin datos", UNCONFIGURED: "Sin configurar", DISABLED: "Deshabilitado" }
 const incidentLabels: Record<string, string> = { VPN: "VPN", COLLECTOR: "Collector", ICMP_UNREACHABLE: "ICMP" }
+const eligibility: Record<string, string> = {
+  NOT_INSTALLED: "Equipo sin instalar", NO_ADDRESS: "Sin IPv4 de gestión",
+  UNAUTHORIZED_NETWORK: "Red fuera de las rutas autorizadas", COLLECTOR_UNAVAILABLE: "Collector no disponible",
+  DUPLICATE: "Destino ya solicitado por otro equipo",
+}
 type MonitorPage = Page<Entry> & { monitored: number; states: Record<string, number> }
 type Sample = { checked_at: string; ip: string | null; result: string; packets_sent: number | null; packets_received: number | null
   latency_ms: number | null; packet_loss_pct: number | null; transport_healthy: boolean; error_detail: string | null }
@@ -23,6 +28,7 @@ type Incident = {
 type Detail = {
   status: string; effective_ip: string | null; ip_mode: string; collector_name: string | null; last_latency_ms: number | null
   last_packet_loss_pct: number | null; last_check_at: string | null; last_success_at: string | null
+  eligibility_reason: string | null
   samples: Sample[]; series: Point[]; incidents: Incident[]
 }
 
@@ -40,6 +46,7 @@ export function MonitoringList({ account }: { account: Account }) {
   const [filters, setFilters] = useState<Record<string, string>>({})
   const change = (key: string, value: string) => { setFilters((old) => ({ ...old, [key]: value })); pager.setOffset(0) }
   const state = useData<MonitorPage>("isp", searchPath(endpoint + "/devices", pager.offset, filters), 0, 5000)
+  const types = useOptions<{ id: string; name: string }>(endpoint + "/device-types")
   return <><PageHeading title="Monitoreo ICMP" />
     <div className="crm-tabs" aria-label="Categoría de los equipos">
       {[["", "Todos los equipos"], ...deviceCategories].map(([value, label]) => <button key={value} type="button"
@@ -54,7 +61,9 @@ export function MonitoringList({ account }: { account: Account }) {
         <Select label="Rol topológico" value={filters.role ?? ""} onChange={(e) => change("role", e.target.value)}>
           <option value="">Todos</option>{roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </Select>
-        <Search label="Tipo de dispositivo" value={filters.device_type ?? ""} onChange={(e) => change("device_type", e.target.value)} />
+        <Select label="Tipo de dispositivo" value={filters.type_id ?? ""} onChange={(e) => change("type_id", e.target.value)}>
+          <option value="">Todos</option>{types.items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </Select>
       </div>
       <div className="table-controls platform-filters">
         {allowed(account, "clients.read") && <Relation kind="clients" name="client_filter" label="Cliente" value={filters.client_id ?? ""}
@@ -71,7 +80,8 @@ export function MonitoringList({ account }: { account: Account }) {
           {data.items.map((device) => <tr key={device.id}>
             <td>{allowed(account, "devices.read") ? <a className="platform-link" href={appPath("devices", device.id) + "?tab=monitoring"}>{device.name}</a> : device.name}</td>
             <td>{device.device_code}</td><td>{optionsLabel(deviceCategories, device.device_category)}</td><td>{device.client_name || "—"}</td>
-            <td>{device.site_name || "—"}</td><td>{device.effective_ip || "—"}</td><td><Status value={asText(device, "status")} /></td>
+            <td>{device.site_name || "—"}</td><td>{device.effective_ip || "—"}</td><td><Status value={asText(device, "status")} />
+              {device.eligibility_reason && <small className="relation-secondary">{eligibility[asText(device, "eligibility_reason")]}</small>}</td>
             <td>{measure(device.last_latency_ms, "ms")}</td><td>{measure(device.last_packet_loss_pct, "%")}</td>
             <td>{dateText(asText(device, "last_check_at"))}</td><td>{duration(typeof device.duration_seconds === "number" ? device.duration_seconds : null)}</td>
           </tr>)}
@@ -124,6 +134,7 @@ const results: Record<string, string> = { REACHABLE: "Respondió", NO_REPLY: "Si
 export function MonitoringDetail({ id }: { id: string }) {
   const [period, setPeriod] = useState("24h")
   const state = useData<Detail>("isp", endpoint + "/devices/" + id + "?period=" + period, 0, 5000)
+  const ticks = new Intl.DateTimeFormat("es-BO", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
   return <DataView state={state}>{(info) => <>
     <Panel title="Mediciones e históricos"><div className="panel-body">
       <div className="form-grid">
@@ -133,17 +144,23 @@ export function MonitoringDetail({ id }: { id: string }) {
           <dt>Pérdida</dt><dd>{measure(info.last_packet_loss_pct, "%")}</dd><dt>Última respuesta</dt><dd>{dateText(info.last_success_at)}</dd>
           <dt>Última comprobación</dt><dd>{dateText(info.last_check_at)}</dd>
         </dl>
-        <Select label="Período" value={period} onChange={(event) => setPeriod(event.target.value)}>
-          <option value="1h">Última hora</option><option value="24h">Últimas 24 horas</option><option value="7d">Últimos 7 días</option>
-        </Select>
+        <div className="monitor-period"><Select label="Período" value={period} onChange={(event) => setPeriod(event.target.value)}>
+          <option value="30m">Últimos 30 minutos</option><option value="1h">Última hora</option>
+          <option value="24h">Últimas 24 horas</option><option value="7d">Últimos 7 días</option>
+        </Select></div>
       </div>
+      {info.eligibility_reason && <p className="description">{eligibility[info.eligibility_reason]}</p>}
       <p className="description">{info.series.filter((point) => point.valid_samples === 0).length} períodos sin datos suficientes.
         La disponibilidad se calcula sobre las comprobaciones válidas del período.</p>
       {info.series.some((point) => point.valid_samples > 0) && <div className="platform-columns">{charts.map(([key, title]) =>
         <section key={key} aria-label={title}><h3>{title}</h3><ResponsiveContainer width="100%" height={135}>
-          <LineChart data={info.series}><XAxis dataKey="bucket" hide /><YAxis width={36} tick={{ fontSize: 10 }} />
+          <LineChart data={info.series}>
+            <XAxis dataKey="bucket" minTickGap={16} tick={{ fontSize: 10 }} interval="preserveStartEnd"
+              tickFormatter={(value: string) => ticks.format(new Date(value))} />
+            <YAxis width={36} tick={{ fontSize: 10 }} domain={key === "latency" ? [0,"auto"] : [0,100]} />
             <Tooltip labelFormatter={(value) => dateText(String(value))} />
-            <Line stroke="#6d28d9" name={title} dataKey={key} dot={false} isAnimationActive={false} />
+            <Line stroke="#6d28d9" name={title} dataKey={key} connectNulls={false}
+              dot={info.series.filter((point) => point[key] !== null).length === 1 ? { r: 3 } : false} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer></section>)}</div>}
     </div>

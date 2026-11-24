@@ -187,6 +187,9 @@ function General({ kind, entry, account }: { kind: Kind; entry: Entry; account: 
     {kind === "sites" && <><dt>Categoría del sitio</dt><dd>{optionsLabel(siteCategories, entry.site_category)}</dd></>}
     {kind === "devices" && <>
       <dt>Categoría funcional</dt><dd>{optionsLabel(deviceCategories, entry.device_category)}</dd>
+      <dt>Tipo</dt><dd>{entry.catalog_type || entry.device_type || "—"}</dd>
+      <dt>Fabricante</dt><dd>{entry.catalog_manufacturer || entry.brand || "—"}</dd>
+      <dt>Modelo</dt><dd>{entry.catalog_model || entry.model || "—"}</dd>
       <dt>Situación del equipo</dt><dd>{optionsLabel(assignmentStates, entry.assignment_state)}</dd>
       <dt>Propiedad</dt><dd>{optionsLabel(ownershipOptions, entry.ownership)}</dd>
       <dt>IP de gestión</dt><dd>{asText(entry, "effective_ip") || "Sin configurar"} · {optionsLabel(ipModes, entry.ip_mode)}</dd>
@@ -226,7 +229,10 @@ export function CrmDetail({ kind, id, account }: { kind: Kind; id: string; accou
     { id: "services", title: "Servicios", permission: "services.read" },
     { id: "devices", title: "Dispositivos", permission: "devices.read" },
   )
-  if (kind === "services") choices.push({ id: "history", title: "Historial", permission: "crm_history.read" })
+  if (kind === "services") choices.push(
+    { id: "devices", title: "Dispositivos", permission: "devices.read" },
+    { id: "history", title: "Historial", permission: "crm_history.read" },
+  )
   if (kind === "devices") choices.push(
     { id: "assignments", title: "Asignaciones" },
     { id: "monitoring", title: "Monitoreo", permission: "icmp.read" },
@@ -236,7 +242,8 @@ export function CrmDetail({ kind, id, account }: { kind: Kind; id: string; accou
   const current = visible.some((item) => item.id === tab) ? tab : "general"
   const refresh = () => setRevision((value) => value + 1)
   const saved = () => { setForm(null); refresh() }
-  const relationFilter: Record<string, string> = kind === "clients" ? { client_id: id } : { site_id: id }
+  const relationFilter: Record<string, string> = kind === "clients" ? { client_id: id }
+    : kind === "services" ? { service_id: id } : { site_id: id }
 
   return <>
     <a href={appPath(kind)} className="platform-link back-link">Volver a {spec.title.toLowerCase()}</a>

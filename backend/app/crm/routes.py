@@ -24,13 +24,16 @@ def resource_routes(path, permission, resource, input_model):
                      site_type: str | None = None, device_category: DeviceCategory | None = None,
                      isp_site: bool = False, eligible_for: AccessMethod | None = None, linkable_service: bool = False,
                      assignment_state: str | None = None,
+                     model_id: UUID | None = None,
+                     service_id: UUID | None = None,
                      sort: Literal["name", "created", "status"] = "name",
                      direction: Literal["asc", "desc"] = "asc", offset: int = Offset, limit: int = Limit):
         with read(request, permission + ".read", ISP) as (db, actor):
             return store.listing(db, resource, actor.company, q=q, status=status, category=category,
                                  client=client_id, site=site_id, sort=sort, direction=direction, offset=offset, limit=limit,
                                  site_type=site_type, device_category=device_category, isp_site=isp_site,
-                                 eligible_for=eligible_for, linkable_service=linkable_service, assignment_state=assignment_state)
+                                 eligible_for=eligible_for, linkable_service=linkable_service, assignment_state=assignment_state,
+                                 model_id=model_id, service_id=service_id)
 
     @router.get(path + "/{record_id}")
     def get_record(record_id: UUID, request: Request):

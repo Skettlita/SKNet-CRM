@@ -26,7 +26,7 @@ def save(db, actor, resource, fields, record_id=None, *, installation="UNDEFINED
     previous = store.owned(db, resource.table, actor.company, record_id) if record_id else None
     if previous and previous["archived_at"]:
         raise HTTPException(409, "El registro archivado está disponible para consulta.")
-    data = fields.model_dump()
+    data = fields.model_dump(exclude={"initial_status"})
     entity = resource.entity
     client = data.get("client_id")
     if resource is store.CLIENTS:
@@ -34,16 +34,32 @@ def save(db, actor, resource, fields, record_id=None, *, installation="UNDEFINED
             store.enforce_limit(db, actor, "max_clients", "clients")
     elif resource is store.SITES:
         validate_site(db, actor, fields, data, previous)
+        if not previous and fields.client_address_id and data["name"] == store.owned(
+            db, "clients", actor.company, fields.client_id
+        )["client_code"]:
+            existing = row(db, """
+                SELECT id FROM crm.sites WHERE company_id=:company AND client_id=:client
+                  AND client_address_id=:address AND site_type=:type AND active AND archived_at IS NULL
+                ORDER BY created_at,id LIMIT 1
+            """, company=actor.company, client=fields.client_id, address=fields.client_address_id, type=fields.site_type)
+            if existing:
+                return store.details(db, resource, actor.company, existing["id"])
     elif resource is store.SERVICES:
+        initial_status = getattr(fields, "initial_status", None)
+        if previous and initial_status:
+            raise problem("initial_status", "Cambia el estado desde la acción de la ficha del servicio.")
         validate_service(db, actor, fields, data, previous)
         if previous is None:
             data["installation_situation"] = installation
-            if installation == "EXISTING":
+            if (initial_status or ("ACTIVE" if installation == "EXISTING" else "PENDING")) == "ACTIVE":
                 actor.require("services.status")
                 if data["contracted_on"] > company_today(db, actor.company):
                     raise HTTPException(422, "Un servicio activo no puede tener una fecha de contratación futura.")
                 data.update(status="ACTIVE", activated_at=datetime.now(UTC))
     elif resource is store.DEVICES:
+        from app.crm.inventory import device_labels
+
+        device_labels(db, actor.company, fields, data, previous)
         client = validate_device(db, actor, fields, data, previous)
 
     if record_id is None:
@@ -73,31 +89,35 @@ def register_customer(db, actor, fields):
     if fields.service:
         actor.require("sites.create")
         actor.require("services.create")
-        if fields.installation_situation == "EXISTING":
-            actor.require("services.status")
-        elif fields.installation_situation == "NEW":
-            actor.require("installations.create")
-    profile = schemas.Client.model_validate(fields.model_dump(exclude={"address", "service", "site", "installation_situation"}))
+    profile = schemas.Client.model_validate(fields.model_dump(
+        exclude={"address", "service", "site", "installation_situation", "initial_status", "equipment"}
+    ))
     client = save(db, actor, store.CLIENTS, profile)
     address_id = None
     if fields.address:
         address = fields.address.model_dump()
         address_id = store.insert(db, store.ADDRESSES, actor.company, {**address, "client_id": client["id"]})
         store.change_event(db, actor, "address", address_id, "create", after=address, client=client["id"])
-    site, service, installation = None, None, None
+    site, service, equipment = None, None, None
     if fields.site:
         site_fields = schemas.Site(
-            **fields.site.model_dump(exclude={"use_client_address"}), client_id=client["id"],
+            **fields.site.model_dump(exclude={"use_client_address", "name"}),
+            name=client["client_code"] if fields.site.use_client_address else fields.site.name, client_id=client["id"],
             client_address_id=address_id if fields.site.use_client_address else None,
         )
         site = save(db, actor, store.SITES, site_fields)
-        service_fields = schemas.Service(**fields.service.model_dump(), client_id=client["id"], site_id=site["id"])
+        service_fields = schemas.Service(**fields.service.model_dump(), client_id=client["id"], site_id=site["id"],
+                                        initial_status=fields.initial_status)
         service = save(db, actor, store.SERVICES, service_fields, installation=fields.installation_situation)
-        if fields.installation_situation == "NEW":
-            from app.crm.installations import create_order
+        if fields.equipment:
+            from app.crm.inventory import take_available
 
-            installation = create_order(db, actor, service["id"], reason="Alta integrada de abonado")
-    return {"client": client, "site": site, "service": service, "installation": installation}
+            device_id = take_available(db, actor, fields.equipment, category="CUSTOMER_EQUIPMENT")
+            equipment = assign_device(db, actor, device_id, schemas.Assignment(
+                client_id=client["id"], site_id=site["id"], service_id=service["id"], assignment_state="ASSIGNED",
+                ip_mode="NONE", reason="Asignación desde alta de abonado",
+            ))
+    return {"client": client, "site": site, "service": service, "equipment": equipment, "installation": None}
 
 
 def validate_site(db, actor, fields, data, previous):
@@ -140,12 +160,15 @@ def validate_service(db, actor, fields, data, previous):
     if fields.access_router_id:
         router = store.owned(db, "devices", actor.company, fields.access_router_id)
         if not previous or previous["access_router_id"] != fields.access_router_id or previous["access_method"] != fields.access_method:
+            if router["device_category"] != "INFRASTRUCTURE":
+                raise problem("access_router_id", "Selecciona un equipo de infraestructura.")
+            if router["retired_at"] or router["assignment_state"] != "INSTALLED" or not router["administrative_active"]:
+                raise problem("access_router_id", "El router de acceso debe estar instalado y habilitado.", 409)
             router_site = store.owned(db, "sites", actor.company, router["site_id"])
-            if router["retired_at"] or not router["administrative_active"] or not router_site["active"] or router_site["archived_at"]:
-                raise HTTPException(409, "El router de acceso debe estar habilitado y en un sitio activo.")
-            if (router["device_category"] != "INFRASTRUCTURE"
-                    or ACCESS_CAPABILITY[fields.access_method] not in router["capabilities"]):
-                raise HTTPException(422, "Selecciona un equipo de infraestructura compatible con la modalidad de acceso.")
+            if not router_site["active"] or router_site["archived_at"]:
+                raise problem("access_router_id", "El router de acceso debe estar en un sitio activo.", 409)
+            if ACCESS_CAPABILITY[fields.access_method] not in router["capabilities"]:
+                raise problem("access_router_id", "Selecciona un router compatible con la modalidad de acceso.")
     if previous and previous["site_id"] != fields.site_id and row(db, """
         SELECT id FROM crm.devices WHERE company_id=:company AND service_id=:service LIMIT 1
     """, company=actor.company, service=previous["id"]):
@@ -185,7 +208,10 @@ def assign_device(db, actor, record_id, fields):
     previous = store.owned(db, "devices", actor.company, record_id)
     if previous["retired_at"] or previous["archived_at"]:
         raise HTTPException(409, "El dispositivo retirado está disponible para consulta.")
-    data = fields.model_dump(exclude={"reason"})
+    if fields.only_available and (previous["assignment_state"] != "AVAILABLE" or not previous["administrative_active"]
+                                  or previous["site_id"] or previous["service_id"]):
+        raise problem("device_id", "Esta unidad ya no está disponible en stock.", 409)
+    data = fields.model_dump(exclude={"reason", "only_available"})
     if not fields.site_id:
         ensure_access_router(db, actor.company, previous, previous["device_category"], previous["capabilities"], None)
     client = validate_placement(db, actor, fields, data, previous["device_category"], previous)
@@ -293,7 +319,7 @@ def check_ip_conflict(db, company, device, address, requested):
           AND administrative_active AND (monitoring_enabled OR monitoring_requested) LIMIT 1
     """, company=company, id=device["id"], address=address)
     if conflict:
-        raise HTTPException(409, "La IP de gestión ya está reservada en este ámbito de monitoreo.")
+        raise problem("requested", "La IP de gestión ya está reservada en este ámbito de monitoreo.", 409)
 
 
 def revise_service_targets(db, company, service_id, value):

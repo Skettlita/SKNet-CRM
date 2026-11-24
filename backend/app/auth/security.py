@@ -106,6 +106,7 @@ def principal(db, request, realm) -> Principal:
             "clients": "CRM", "sites": "CRM", "internet_plans": "CRM", "services": "CRM",
             "devices": "CRM", "infrastructure": "CRM", "crm_history": "CRM", "installations": "CRM",
             "monitoring": "ICMP",
+            "inventory": "CRM",
         }
         permissions = {
             code for code in grants

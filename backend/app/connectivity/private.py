@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
@@ -54,17 +55,35 @@ def material(request: Request, job_id: UUID, data: schemas.Material):
 @worker.post(worker_path + "/jobs/{job_id}/progress")
 def progress(request: Request, job_id: UUID, data: schemas.Progress):
     with database(request) as db, write_operation(db):
-        _, target = jobs.active(db, job_id, data.lease)
+        job, target = jobs.active(db, job_id, data.lease)
+        if data.reset_heartbeat or data.step in {"UPGRADING", "ROLLBACK"}:
+            if job["operation"] != "UPGRADE" and not (
+                job["operation"] == "RECONCILE" and data.step == "CONTAINER"
+            ):
+                raise HTTPException(409, "El trabajo no puede reemplazar el contenedor.")
+            if data.step == "ROLLBACK":
+                execute(db, """
+                    UPDATE connectivity.provisioning_jobs SET rollback_started=true,verify_after=NULL WHERE id=:id
+                """, id=job_id)
+            if data.reset_heartbeat:
+                execute(db, "UPDATE connectivity.collectors SET last_heartbeat_at=NULL,applied_revision=NULL WHERE id=:id",
+                        id=target["id"])
+                execute(db, "UPDATE connectivity.provisioning_jobs SET verify_after=now() WHERE id=:id", id=job_id)
+                execute(db, """
+                    UPDATE connectivity.vpn_tunnels SET monitor_epoch=monitor_epoch+1,last_probe_at=NULL,
+                      connection_status='UNKNOWN',consecutive_failures=0 WHERE id=:id
+                """, id=target["tunnel_id"])
         execute(db, "UPDATE connectivity.collectors SET provisioning_step=:step WHERE id=:id",
                 step=data.step, id=target["id"])
-        return {"heartbeat_fresh": target["heartbeat_fresh"], "applied_revision": target["applied_revision"]}
+        return {"heartbeat_fresh": not data.reset_heartbeat and target["heartbeat_fresh"],
+                "applied_revision": None if data.reset_heartbeat else target["applied_revision"]}
 
 
 @worker.post(worker_path + "/jobs/{job_id}/finish")
 def finish(request: Request, job_id: UUID, data: schemas.Completion):
     with database(request) as db, write_operation(db):
         job, target = jobs.active(db, job_id, data.lease)
-        jobs.finish(db, job, target, data.error, data.container_id)
+        jobs.finish(db, job, target, data.error, data.container_id, image=data.image, rolled_back=data.rolled_back)
         return {}
 
 
@@ -73,11 +92,12 @@ def inventory(request: Request):
     with database(request) as db:
         settings = configuration(required=True)
         return rows(db, """
-            SELECT c.id,c.name,a.edge_rule_tag AS tag,a.external_udp_port AS port,host(a.bind_address) AS bind
+            SELECT c.id,c.name,c.company_id AS company,:installation AS installation,
+                   a.edge_rule_tag AS tag,a.external_udp_port AS port,host(a.bind_address) AS bind
             FROM connectivity.collectors c LEFT JOIN connectivity.resource_allocations a
               ON a.collector_id=c.id AND a.status='ACTIVE' AND c.enabled
            WHERE c.retired_at IS NULL AND c.simulated=:sim
-        """, sim=settings.simulated)
+        """, sim=settings.simulated, installation=settings.installation)
 
 
 @worker.post(worker_path + "/observations")
@@ -87,9 +107,11 @@ def observe(request: Request, data: schemas.Observations):
         jobs.registered_pool(db, settings)
         jobs.observations(db, data.items)
         execute(db, """
-            UPDATE connectivity.network_pools SET observed_networks=CAST(:nets AS cidr[]),observed_ports=:ports,observed_at=now()
+            UPDATE connectivity.network_pools SET observed_networks=CAST(:nets AS cidr[]),observed_ports=:ports,observed_at=now(),
+              residual_resources=coalesce(CAST(:residual AS jsonb),residual_resources)
             WHERE name=:name
-        """, nets=list(map(str, data.inventory.networks)), ports=data.inventory.ports, name=settings.installation)
+        """, nets=list(map(str, data.inventory.networks)), ports=data.inventory.ports, name=settings.installation,
+            residual=json.dumps(jobs.residual_resources(db, data.resources)) if data.resources is not None else None)
         return {}
 
 

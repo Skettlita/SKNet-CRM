@@ -12,8 +12,9 @@ from app.auth.schemas import Input
 PublicKey = Annotated[str, StringConstraints(min_length=44, max_length=44)]
 Code = Literal["DOCKER_FAILED", "PORT_CONFLICT", "DOCKER_POOL", "WG_POOL", "UDP_POOL",
                "ROUTEROS_FAILED", "ROUTE_CONFLICT", "KEY_FAILED", "LEASE_EXPIRED",
-               "COLLECTOR_STALE", "CONFIGURATION", "RETIRE_FAILED"]
-Step = Literal["RESERVING", "KEYS", "NETWORK", "CONTAINER", "NAT", "VERIFYING", "RETIRING"]
+               "COLLECTOR_STALE", "CONFIGURATION", "RETIRE_FAILED", "UPGRADE_FAILED", "ROLLBACK_FAILED"]
+Step = Literal["RESERVING", "KEYS", "NETWORK", "CONTAINER", "NAT", "VERIFYING", "RETIRING", "UPGRADING", "ROLLBACK"]
+Image = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
 
 
 def check_key(value):
@@ -75,22 +76,39 @@ class Material(Lease):
 
 class Progress(Lease):
     step: Step
+    reset_heartbeat: bool = False
 
 
 class Completion(Lease):
     container_id: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")] | None = None
     error: Code | None = None
+    image: Image | None = None
+    rolled_back: bool = False
+
+
+class AdminAction(Input):
+    expected_image: Image | None = None
 
 
 class Observation(Input):
     id: UUID
     state: Literal["RUNNING", "EXITED", "MISSING", "CREATED", "UNKNOWN"]
     error: Literal["ROUTEROS_FAILED"] | None = None
+    image: Image | None = None
+    available_image: Image | None = None
+
+
+class DockerResource(Input):
+    id: UUID
+    company: UUID
+    kind: Literal["container", "network", "volume"]
+    name: Annotated[str, StringConstraints(max_length=255)]
 
 
 class Observations(Input):
     items: list[Observation] = Field(max_length=1024)
     inventory: Inventory
+    resources: list[DockerResource] | None = Field(default=None, max_length=4096)
 
 
 class Probe(Input):

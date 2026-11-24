@@ -15,6 +15,7 @@ from app.auth.routes import admin, isp
 from app.connectivity.routes import admin as connectivity_admin, isp as connectivity_isp
 from app.crm.routes import router as crm_router
 from app.crm.installations import router as installation_router
+from app.crm.inventory import router as inventory_router
 from app.platform.routes import admin as platform_admin, isp as platform_isp
 from app.db import create_database_engine, create_session_factory
 from app.validation import fields_for
@@ -66,6 +67,7 @@ app.include_router(platform_admin)
 app.include_router(platform_isp)
 app.include_router(crm_router)
 app.include_router(installation_router)
+app.include_router(inventory_router)
 app.include_router(connectivity_admin)
 app.include_router(connectivity_isp)
 app.include_router(monitoring_router)

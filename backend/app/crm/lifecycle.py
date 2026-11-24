@@ -24,6 +24,7 @@ LABELS = {
     "installation_history": "historial de instalaciones", "installation_devices": "equipos de instalación",
     "installation_technicians": "técnicos de instalación", "device_assignments": "historial de asignaciones",
 }
+INITIAL_SERVICE_HISTORY = "previous_status IS NULL AND new_status IN ('PENDING','ACTIVE')"
 
 
 def archive(db, actor, resource, record_id, data):
@@ -65,7 +66,7 @@ def references(db, table, record_id):
         qualified = quote(key["schema"]) + "." + quote(key["tab"])
         clause = ""
         if table == "services" and key["tab"] == "service_status_history":
-            clause = "AND NOT (previous_status IS NULL AND new_status='PENDING')"
+            clause = f"AND NOT ({INITIAL_SERVICE_HISTORY})"
         if execute(db, f"SELECT EXISTS(SELECT 1 FROM {qualified} WHERE {quote(key['col'])}=:id {clause})",
                    id=record_id).scalar_one():
             dependencies.add(LABELS.get(key["tab"], key["tab"].replace("_", " ")))
@@ -78,16 +79,16 @@ def delete(db, actor, resource, record_id, data):
     if blockers:
         raise HTTPException(409, detail={"message": "El registro tiene dependencias protegidas. Puedes archivarlo.",
                                         "dependencies": blockers})
-    if resource is store.SERVICES and previous["status"] != "PENDING":
+    if resource is store.SERVICES and previous["status"] not in {"PENDING", "ACTIVE"}:
         raise HTTPException(409, DEPENDENCIES["services"][1])
     if resource is store.DEVICES and (previous["installed_at"] or previous["asset_id"] or previous["site_id"]):
         raise HTTPException(409, DEPENDENCIES["devices"][1])
     try:
         with db.begin_nested():
             if resource is store.SERVICES:
-                execute(db, """
+                execute(db, f"""
                     DELETE FROM crm.service_status_history WHERE company_id=:company AND service_id=:id
-                    AND previous_status IS NULL AND new_status='PENDING'
+                    AND {INITIAL_SERVICE_HISTORY}
                 """, company=actor.company, id=record_id)
             execute(db, f"DELETE FROM crm.{resource.table} WHERE company_id=:company AND id=:id",
                     company=actor.company, id=record_id)

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from test_access import admin_id, change_password, login, make_role, migrated, request, user_payload
-from test_crm import CRM, get, make, make_plan
+from test_crm import CRM, catalog_device, get, make, make_plan
 from test_migrations import BACKEND
 from test_platform import accepted, authentication, manual_signup
 
@@ -47,7 +47,7 @@ def test_integrated_customer_initial_states_and_rollback(migrated, admin_id):
         result = make(isp, "clients/register", fields)
         client, site, service = (result[name] for name in ("client", "site", "service"))
         assert (client["client_code"], site["site_code"], service["service_code"]) == ("CLI-000002", "SIT-000001", "SRV-000001")
-        assert site["name"] == "Domicilio inicial" and site["client_id"] == client["id"]
+        assert site["name"] == client["client_code"] and site["client_id"] == client["id"]
         assert site["address"] is None and site["effective_address"] == "Calle principal 120"
         assert service["status"] == "ACTIVE" and service["activated_at"] and service["installation_situation"] == "EXISTING"
         assert (service["monthly_price"], service["currency"], service["service_ip_text"]) == (160.50, "BOB", "172.16.10.21")
@@ -103,6 +103,7 @@ def test_sites_devices_service_choices_and_ownership(migrated, admin_id):
 
         endpoint_data = {"name": "ONT doméstica", "site_id": site["id"], "client_id": client["id"], "device_role": "ENDPOINT",
                          "device_type": "ONT", "device_category": "CUSTOMER_EQUIPMENT", "ip_address": "192.168.5.123"}
+        endpoint_data = catalog_device(isp, endpoint_data)
         endpoint = make(isp, "devices", endpoint_data)
         assigned = make(isp, "devices", endpoint_data | {"name": "Router Wi-Fi", "service_id": service["id"]})
         assert endpoint["service_id"] is None and assigned["service_id"] == service["id"]

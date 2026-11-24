@@ -82,7 +82,7 @@ Consulta las reglas del alta integrada, las capacidades de routers de acceso y e
 
 ## Verificar instalaciones y monitoreo
 
-1. Registra un cliente con servicio y selecciona **Requiere una nueva instalación**. Abre **Operaciones → Instalaciones**, programa la orden y asigna un técnico. Agrega un equipo disponible o registra uno en la orden.
+1. Crea tipo, fabricante y modelo desde **Inventario → Catálogos** y registra unidades en **Stock de equipos**. Da de alta un cliente con servicio, elige su estado inicial y, si corresponde, asigna una unidad disponible. Para probar el flujo de instalación, crea la orden desde la ficha de un servicio pendiente.
 2. Inicia la ejecución y, al terminar, agrega un resultado de verificación manual o técnica. Según los permisos puedes activar el servicio, instalar los equipos registrados y solicitar monitoreo para los que tengan IPv4 efectiva.
 3. En una conexión de prueba con el collector actualizado, registra un equipo instalado con una IPv4 en una red autorizada. Configura el perfil ICMP y consulta **Red → Monitoreo**, la ficha del equipo y **Red → Incidentes**. En un destino descartable, comprueba una pérdida de respuesta con el túnel todavía sano y luego una interrupción del túnel.
 4. Para observar la actualización automática, abre las pantallas de collectors, VPN o recursos en el panel SaaS. Retira únicamente un collector de prueba y verifica que la lista se actualice sin recargar la página.
@@ -148,6 +148,6 @@ Para incluir las pruebas de migración, autenticación y aislamiento, configura 
 
 ## Entornos y referencia
 
-`compose.yaml` se combina con `compose.dev.yaml`, `compose.test.yaml` o `compose.prod.yaml`. Cada overlay define un nombre de proyecto, redes y volúmenes independientes por proyecto y un puerto web distinto. Usa un archivo de variables separado por ambiente. TEST y PROD quedan preparados para validación posterior. Consulta [entornos](docs/ENVIRONMENTS.md) y [estado de implementación](docs/IMPLEMENTATION_STATUS.md).
+`compose.yaml` se combina con `compose.dev.yaml`, `compose.test.yaml` o `compose.prod.yaml`. Usa un archivo de variables separado por ambiente. En Ubuntu TEST, `compose.test-routeros.yaml` habilita la conectividad del laboratorio cuando estén listas la red y las credenciales. Consulta los comandos de construcción, arranque, actualización y comprobación en [Entornos y despliegue](docs/ENVIRONMENTS.md). El historial de la fase y las pruebas figuran en [Estado de implementación](docs/IMPLEMENTATION_STATUS.md).
 
 La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. El panel ISP incorpora CRM, instalaciones, conectividad WireGuard y monitoreo ICMP.

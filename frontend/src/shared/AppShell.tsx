@@ -41,12 +41,13 @@ const groups: { label: string; items: { title: string; route: string; icon: type
     { title: "Dispositivos", route: "/devices", icon: Cpu, permission: "devices.read", scope: "isp" },
     { title: "Infraestructura", route: "/infrastructure", icon: RadioTower, permission: "infrastructure.read", scope: "isp" },
   ] },
-  { label: "Operaciones", items: [
-    { title: "Instalaciones", route: "/installations", icon: ClipboardList, permission: "installations.read", scope: "isp" },
-  ] },
   { label: "Soporte", items: [
     { title: "Contactar SKNet", route: "/support", icon: LifeBuoy, permission: "support.read", scope: "isp" },
     { title: "Contactar SKNet", route: "/support/new", icon: LifeBuoy, permission: "support.create", scope: "isp", fallback: "support.read" },
+  ] },
+  { label: "Inventario", items: [
+    { title: "Stock de equipos", route: "/stock", icon: Cpu, permission: "inventory.read", scope: "isp" },
+    { title: "Catálogos", route: "/catalogs", icon: ClipboardList, permission: "inventory.read", scope: "isp" },
   ] },
   { label: "Infraestructura", items: [
     { title: "Estado del sistema", route: "/system", icon: Activity, permission: "system.read" },

@@ -499,7 +499,7 @@ summary { cursor: pointer; }
 .platform-filters { display: flex; flex-wrap: wrap; align-items: end; border-bottom: 1px solid var(--border); }
 .platform-filters .form-field { width: auto; min-width: min(100%, 125px); }
 .platform-filters .form-field:has(input[type="search"]) { min-width: min(100%, 230px); }
-.form-field :is(select, textarea) {
+.form-field :is(select, textarea, .site-select-trigger) {
   width: 100%;
   min-height: 32px;
   border: 1px solid #d1d5db;
@@ -508,7 +508,7 @@ summary { cursor: pointer; }
   padding: 4px 8px;
   font-weight: 400;
 }
-.form-field select { max-width: 410px; }
+.form-field :is(select, .site-select-trigger) { max-width: 410px; }
 .form-field textarea { resize: vertical; }
 .platform-link { color: var(--primary-dark); font-weight: 550; }
 .platform-link:hover { text-decoration: underline; }
@@ -545,6 +545,13 @@ summary { cursor: pointer; }
 .crm-form-section h3, .crm-capabilities legend { font-size: 13px; font-weight: 600; }
 .action-form .crm-capabilities { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .form-field [aria-invalid="true"] { border-color: #dc2626; }
+.relation-secondary { display: block; color: var(--muted-foreground, #6b7280); font-size: 11px; }
+.site-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; }
+.site-select-positioner { z-index: 20; }
+.site-select-popup { width: max(145px, var(--anchor-width)); max-width: calc(100vw - 16px); max-height: min(260px, var(--available-height)); overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+.site-select-option { padding: 5px 8px; font-size: 13px; cursor: default; }
+.site-select-option:is([data-highlighted], [data-selected]) { background: var(--accent); color: var(--primary-dark); }
+.monitor-period { width: min(100%, 190px); justify-self: start; }
 .relation-control { display: grid; gap: 5px; }
 .crm-table-icon { display: inline-block; margin-right: 5px; vertical-align: text-bottom; }
 .crm-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }

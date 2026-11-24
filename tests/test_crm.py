@@ -13,7 +13,26 @@ SWITCH = {"active": False, "reason": "Prueba de estado administrativo"}
 
 
 def make(client, kind, data):
+    if kind == "devices" and not data.get("type_id"):
+        data = catalog_device(client, data)
     return accepted(request(client, "POST", CRM + kind, data), 201)
+
+
+def catalog_id(client, section, name):
+    endpoint = "isp/inventory/catalog/" + section
+    existing = accepted(client.get("/api/v1/" + endpoint, params={"q": name}))["items"]
+    matches = [item["id"] for item in existing if item["name"] == name]
+    if matches:
+        return matches[0]
+    response = request(client, "POST", endpoint, {"name": name})
+    if response.status_code == 409:
+        items = accepted(client.get("/api/v1/" + endpoint, params={"q": name}))["items"]
+        return next(item["id"] for item in items if item["name"] == name)
+    return accepted(response, 201)["id"]
+
+
+def catalog_device(client, data):
+    return {**data, "type_id": catalog_id(client, "types", data["device_type"])}
 
 
 def get(client, path, params=None):
@@ -183,7 +202,7 @@ def test_tenant_isolation_features_and_limits(migrated, admin_id):
         first_site = make_site(isp, "Nodo A")
         second_site = make_site(other, "Nodo B")
         assert request(isp, "POST", CRM + "sites", {"client_id": b["id"], "site_type": "CLIENT_SITE", "name": "Ajeno"}).status_code == 404
-        assert request(isp, "POST", CRM + "devices", device_data(second_site)).status_code == 404
+        assert request(isp, "POST", CRM + "devices", catalog_device(isp, device_data(second_site))).status_code == 404
 
         a_device = make(isp, "devices", device_data(first_site, "192.168.1.254"))
         b_device = make(other, "devices", device_data(second_site, "192.168.1.254"))

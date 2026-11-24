@@ -36,3 +36,18 @@ El destino WAN depende de la instalación. El adaptador evita las reglas ajenas 
 5. Verifica alta, repetición, rotación, reinicio, retiro controlado, TLS y pérdidas de disponibilidad con un router autorizado para TEST. Debe fallar de forma visible si falta NAT, forwarding o la clave del peer. Una publicación UDP ocupada por un proceso externo al inventario Docker se detecta al crear o arrancar el contenedor. La reserva se conserva hasta reconciliar la causa.
 
 No se aplicó esta configuración en Ubuntu TEST. En DEV, el adaptador simulado se identifica en las pantallas, en la API y en la vista previa del script.
+
+## Actualizar y reconciliar collectors
+
+En **SaaS → Collectors** se compara la imagen observada en el contenedor con el identificador al que apunta la etiqueta configurada en `SKNET_COLLECTOR_IMAGE`. La opción **Actualizar collector** requiere un collector operativo, una candidata distinta y que no haya otro trabajo activo. Construir o etiquetar una imagen no solicita actualizaciones.
+
+1. Conserva localmente las dos imágenes. Etiqueta el identificador actualmente desplegado, por ejemplo `docker tag sha256:ID_ANTERIOR sknet-collector:respaldo-test`, y construye la imagen candidata con la etiqueta configurada para ese entorno.
+2. Solicita **Actualizar collector** y confirma la imagen que muestra el panel. El trabajo guarda los dos IDs inmutables. El provisioner verifica propiedad, red, volúmenes y puertos. Reemplaza el contenedor con la misma identidad, token, red asignada, IP, puerto y volumen.
+3. El backend exige un heartbeat posterior al reemplazo con la revisión vigente. El provisioner comprueba la imagen, el contenedor en ejecución y la clave pública WireGuard aplicada. El trabajo guarda el resultado y el nuevo identificador del contenedor. La VPN vuelve a comprobarse por el flujo normal del collector.
+4. Si la nueva imagen falla, el worker intenta recuperar la anterior y la verifica de nuevo. **Trabajos** registra el fallo y, si se verificó la reversión, muestra **Imagen anterior restaurada y verificada**. La actualización no llama al adaptador de RouterOS. Puede haber un intervalo sin mediciones durante el reemplazo y la reversión.
+
+**Reconciliar** permite a SaaS reparar un collector habilitado aun dentro de la ventana automática de 15 minutos. Recrear un contenedor perdido usa el último ID de imagen aprobado si se conoce. **Reintentar** actúa sobre trabajos fallidos. **Deshabilitar** corta el uso sin liberar la reserva. **Retirar definitivamente** verifica la desaparición del contenedor y de la red antes de liberar la reserva. Los volúmenes de identidad y datos se conservan.
+
+**Recursos de red** informa contenedores, redes y volúmenes con etiquetas de la instalación que carecen de una referencia vigente. Los volúmenes que pertenecen a un collector retirado aparecen como conservados. Ante una investigación, verifica primero las tres etiquetas de propiedad, la reserva en la base, las conexiones del recurso y, para volúmenes, la existencia de una copia protegida. El detector solo informa.
+
+`POST /api/v1/admin/connectivity/collectors/{company}/{collector}/upgrade` y `/reconcile` requieren `connectivity.write` en SaaS. Los listados `/admin/connectivity/collectors`, `/jobs` y `/pools` exponen el estado de imágenes, trabajos y residuos. El canal del worker permanece en el socket privado.

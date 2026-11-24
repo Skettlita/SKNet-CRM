@@ -16,10 +16,13 @@ type Collector = {
   transport_connected: boolean
   script_available: boolean; simulation_preview: boolean; peer_configured: boolean
   docker_subnet: string | null; docker_ip: string | null; wireguard_subnet: string | null; external_udp_port: number | null
+  observed_image: string | null; available_image: string | null; upgrade_available: boolean
 }
 type Job = { id: string; company_name: string; operation: string; status: string; attempts: number
-  created_at: string; finished_at: string | null; error_code: string | null }
-type Pools = { mode: string; reserved: number; items: { name: string; pool: string; total: number; available: number }[] }
+  created_at: string; finished_at: string | null; error_code: string | null
+  previous_image: string | null; desired_image: string | null; rolled_back: boolean }
+type Pools = { mode: string; reserved: number; items: { name: string; pool: string; total: number; available: number }[]
+  residual_resources: { kind: string; name: string; status: string }[] }
 
 const labels: Record<string, string> = {
   QUEUED: "En cola", RESERVING: "Reservando redes y puerto", KEYS: "Preparando claves",
@@ -35,13 +38,29 @@ const labels: Record<string, string> = {
   DOCKER_FAILED: "No se pudo verificar el collector", KEY_FAILED: "No se pudieron preparar claves",
   LEASE_EXPIRED: "Venció el tiempo de aprovisionamiento", CONFIGURATION: "Configuración de instalación incompatible",
   RETIRE_FAILED: "El retiro falló y los recursos siguen reservados",
+  UPGRADE: "Actualización", UPGRADING: "Aplicando imagen nueva", ROLLBACK: "Restaurando imagen anterior",
+  UPGRADE_FAILED: "Falló la actualización", ROLLBACK_FAILED: "No se pudo verificar la reversión",
+  container: "Contenedor", network: "Red", volume: "Volumen",
+  RETAINED: "Conservado tras el retiro", UNREFERENCED: "Sin referencia vigente",
 }
 const label = (value: string | null) => value ? labels[value] ?? value : "—"
+const imageId = (image: string | null) => image ? <code title={image}>{image.slice(7, 19)}</code> : "—"
 const networks = (fields: FormData) => textValue(fields, "networks").split(/[\s,]+/).filter(Boolean)
 const vpn = (item: Collector) => item.transport_connected ? "CONNECTED"
   : item.last_heartbeat_at && !item.heartbeat_fresh ? "STALE"
     : item.connection_status === "DISCONNECTED" ? "DISCONNECTED" : "UNKNOWN"
 const ticket = (id: string, base: string, canRead: boolean) => canRead ? <a href={base + "/support/" + id}>{id}</a> : id
+
+function collectorActions(item: Collector) {
+  const actions: [string, string][] = []
+  if (item.job_status === "FAILED" && item.provisioning_status === "ERROR") actions.push(["retry", "Reintentar"])
+  if (item.enabled) {
+    actions.push(["reconcile", "Reconciliar"])
+    if (item.upgrade_available) actions.push(["upgrade", "Actualizar collector"])
+    actions.push(["rotate", "Rotar token"], ["disable", "Deshabilitar"])
+  } else actions.push(["remove", "Retirar definitivamente"])
+  return actions
+}
 
 export function IspConnectivity({ account }: { account: Account }) {
   const { version, reload } = usePager()
@@ -135,7 +154,7 @@ export function AdminConnectivity({ account, view }: { account: Account; view: "
   const jobs = useData<Page<Job>>("admin", view === "jobs" ? "/connectivity/jobs?offset=" + offset : null, version,
     (page) => page?.items.some((item) => item.status === "RUNNING" || item.status === "PENDING") ? 2000 : 5000)
   const pools = useData<Pools>("admin", view === "pools" ? "/connectivity/pools" : null, version, 10000)
-  const [action, setAction] = useState<{ id: string; command: string; title: string } | null>(null)
+  const [action, setAction] = useState<{ id: string; command: string; title: string; image: string | null } | null>(null)
   const titles = { collectors: "Collectors", vpn: "Conectividad VPN", pools: "Recursos de red", jobs: "Trabajos de aprovisionamiento" }
   const canWrite = account.permissions.includes("connectivity.write")
   const isVpn = view === "vpn"
@@ -146,35 +165,45 @@ export function AdminConnectivity({ account, view }: { account: Account; view: "
       <DataTable headers={["Recurso", "Pool", "Capacidad", "Ocupados o bloqueados", "Disponibles"]}>
         {data.items.map((item) => <tr key={item.name}><td>{item.name}</td><td>{item.pool}</td><td>{item.total}</td><td>{item.total - item.available}</td><td>{item.available}</td></tr>)}
       </DataTable>
+      {data.residual_resources.length > 0 && <><h3 className="panel-message">Recursos residuales</h3>
+        <DataTable headers={["Recurso", "Tipo", "Estado"]}>
+          {data.residual_resources.map((item) => <tr key={item.kind + item.name}>
+            <td>{item.name}</td><td>{label(item.kind)}</td><td>{label(item.status)}</td></tr>)}
+        </DataTable></>}
     </>}</DataView></Panel>}
     {view === "jobs" && <Panel><DataView state={jobs}>{(data) => <>
       <DataTable headers={["Empresa", "Operación", "Estado", "Intentos", "Creado", "Finalizado", "Diagnóstico"]} empty={data.items.length ? undefined : "No hay trabajos."}>
         {data.items.map((item) => <tr key={item.id}><td>{item.company_name}</td><td>{label(item.operation)}</td>
           <td><Status value={item.status} /></td><td>{item.attempts}</td><td>{dateText(item.created_at)}</td>
-          <td>{dateText(item.finished_at)}</td><td>{label(item.error_code)}</td></tr>)}
+          <td>{dateText(item.finished_at)}</td><td>{label(item.error_code)}
+            {item.desired_image && <div>{imageId(item.previous_image)} → {imageId(item.desired_image)}</div>}
+            {item.rolled_back && <div>Imagen anterior restaurada y verificada</div>}</td></tr>)}
       </DataTable><Pagination offset={offset} more={data.has_more} onChange={setOffset} />
     </>}</DataView></Panel>}
     {(view === "collectors" || isVpn) && <Panel><DataView state={collectors}>{(data) => <>
       <DataTable headers={isVpn ? ["Empresa", "VPN", "WireGuard", "Redes autorizadas", "Handshake", "Diagnóstico"] :
-        ["Empresa", "Aprovisionamiento", "Contenedor", "Red Docker", "IP", "UDP", "Heartbeat", "Diagnóstico", "Acciones"]}
+        ["Empresa", "Aprovisionamiento", "Contenedor", "Imagen actual", "Imagen disponible", "Red Docker", "IP", "UDP", "Heartbeat", "Diagnóstico", "Acciones"]}
         empty={data.items.length ? undefined : "No hay collectors."}>
         {data.items.map((item) => <tr key={item.id}><td>{item.company_name}{item.simulated && <div><Status value="SIMULATED" /></div>}</td>
           {isVpn ? <><td><Status value={vpn(item)} /></td><td>{item.wireguard_subnet ?? "—"}</td><td>{item.networks.join(", ")}</td>
             <td>{dateText(item.last_handshake_at)}</td><td>{label(item.diagnostic)}</td></> :
             <><td><Status value={item.provisioning_status} /></td><td><Status value={item.container_state} /></td>
+              <td>{imageId(item.observed_image)}</td><td>{imageId(item.available_image)}
+                {item.upgrade_available && <div>Actualización disponible</div>}</td>
               <td>{item.docker_subnet ?? "—"}</td><td>{item.docker_ip ?? "—"}</td><td>{item.external_udp_port ?? "—"}</td><td>{dateText(item.last_heartbeat_at)}</td>
               <td>{label(item.diagnostic)}{item.ticket_id && <div>{ticket(item.ticket_id, "/admin", account.permissions.includes("support.read"))}</div>}</td>
               <td>{canWrite && !["PENDING", "RUNNING"].includes(item.job_status ?? "") && <div className="form-actions">
-                {(item.job_status === "FAILED" ? [["retry", "Reintentar"]] :
-                  item.enabled ? [["rotate", "Rotar token"], ["disable", "Deshabilitar"]] : [["remove", "Retirar recursos"]])
-                  .map(([command, title]) => <Button key={command} onClick={() => setAction({ id: item.id, command, title })}>{title}</Button>)}
+                {collectorActions(item).map(([command, title]) =>
+                  <Button key={command} onClick={() => setAction({ id: item.id, command, title, image: item.available_image })}>{title}</Button>)}
               </div>}</td></>}
         </tr>)}
       </DataTable><Pagination offset={offset} more={data.has_more} onChange={setOffset} />
       {action && data.items.filter((item) => item.id === action.id).map((item) =>
         <div className="panel-body" key={item.id}><h3>{action.title} · {item.company_name}</h3>
+          {action.command === "upgrade" && <p>El collector se reiniciará con la imagen {imageId(action.image)}. Durante el cambio se interrumpirán brevemente las mediciones.</p>}
           <ActionForm label="Confirmar" cancel={() => setAction(null)} submit={async () => {
-            await api("admin", "/connectivity/collectors/" + item.company_id + "/" + item.id + "/" + action.command, "POST")
+            await api("admin", "/connectivity/collectors/" + item.company_id + "/" + item.id + "/" + action.command,
+              "POST", action.command === "upgrade" ? { expected_image: action.image } : undefined)
             setAction(null)
             reload()
           }} />

@@ -1,0 +1,67 @@
+# Optional overlay for Ubuntu TEST when the lab router is ready.
+services:
+  backend:
+    restart: unless-stopped
+    environment:
+      SKNET_CONNECTIVITY_MODE: routeros
+      SKNET_INSTALLATION_ID: ${SKNET_INSTALLATION_ID:?Define un identificador exclusivo de TEST}
+      SKNET_DOCKER_POOL: ${SKNET_DOCKER_POOL:?Define el pool Docker de TEST}
+      SKNET_WG_POOL: ${SKNET_WG_POOL:?Define el pool WireGuard de TEST}
+      SKNET_PROTECTED_NETWORKS: ${SKNET_PROTECTED_NETWORKS:-}
+      SKNET_UDP_FIRST: ${SKNET_UDP_FIRST:?Define el primer puerto UDP de TEST}
+      SKNET_UDP_LAST: ${SKNET_UDP_LAST:?Define el último puerto UDP de TEST}
+      SKNET_UDP_INTERNAL: ${SKNET_UDP_INTERNAL:-51820}
+      SKNET_UDP_BIND: ${SKNET_UDP_BIND:?Define la IP de Ubuntu que recibe WireGuard}
+      SKNET_WG_ENDPOINT: ${SKNET_WG_ENDPOINT:?Define el endpoint WireGuard del laboratorio}
+      SKNET_WG_MTU: ${SKNET_WG_MTU:-1420}
+      SKNET_WG_KEEPALIVE: ${SKNET_WG_KEEPALIVE:-25}
+      SKNET_COLLECTOR_HEARTBEAT: ${SKNET_COLLECTOR_HEARTBEAT:-10}
+      SKNET_COLLECTOR_STALE: ${SKNET_COLLECTOR_STALE:-30}
+      SKNET_ICMP_RETENTION_DAYS: ${SKNET_ICMP_RETENTION_DAYS:-30}
+      SKNET_ORIGIN: ${SKNET_ORIGIN:?Define el origen web de TEST}
+      SKNET_COOKIE_SECURE: ${SKNET_COOKIE_SECURE:-1}
+    volumes:
+      - worker_api:/run/sknet-worker
+      - collector_api:/run/sknet-collector
+  provisioner:
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    network_mode: !reset null
+    networks: [router_management]
+    environment:
+      SKNET_CONNECTIVITY_MODE: routeros
+      SKNET_INSTALLATION_ID: ${SKNET_INSTALLATION_ID:?Define un identificador exclusivo de TEST}
+      SKNET_COLLECTOR_IMAGE: ${SKNET_COLLECTOR_IMAGE:?Define una etiqueta local exclusiva para el collector de TEST}
+      SKNET_ICMP_CONCURRENCY: ${SKNET_ICMP_CONCURRENCY:-10}
+      SKNET_COLLECTOR_API_VOLUME: ${SKNET_COLLECTOR_API_VOLUME:?Define un nombre de volumen exclusivo de TEST}
+      SKNET_ROUTEROS_URL: ${SKNET_ROUTEROS_URL:?Define el origen HTTPS de administración del router}
+      SKNET_ROUTEROS_WAN: ${SKNET_ROUTEROS_WAN:?Define la dirección visible para el peer WireGuard}
+      SKNET_ROUTEROS_TARGET: ${SKNET_UDP_BIND:?Define la IP de Ubuntu que recibe WireGuard}
+      SKNET_ROUTEROS_FORWARD_TAG: ${SKNET_ROUTEROS_FORWARD_TAG:?Define la etiqueta de la regla aprobada del firewall}
+      SKNET_ROUTEROS_USER: ${SKNET_ROUTEROS_USER:?Define el usuario de servicio RouterOS}
+      SKNET_ROUTEROS_PASSWORD_FILE: /run/secrets/routeros_password
+      SKNET_ROUTEROS_CA_FILE: /run/secrets/routeros_ca
+    secrets: [routeros_password, routeros_ca]
+    volumes:
+      - worker_api:/run/sknet-worker:ro
+      - provisioner_secrets:/var/lib/sknet-provisioner
+
+networks:
+  router_management:
+    ipam:
+      config:
+        - subnet: ${SKNET_ROUTEROS_MANAGEMENT_SUBNET:?Define una subred Docker separada para el provisioner}
+
+volumes:
+  worker_api:
+  collector_api:
+    name: ${SKNET_COLLECTOR_API_VOLUME:?Define un nombre de volumen exclusivo de TEST}
+  provisioner_secrets:
+
+secrets:
+  routeros_password:
+    file: ${SKNET_ROUTEROS_PASSWORD_SOURCE:?Define la ruta al archivo del secreto RouterOS}
+  routeros_ca:
+    file: ${SKNET_ROUTEROS_CA_SOURCE:?Define la ruta al archivo de la CA que emitió el certificado RouterOS}

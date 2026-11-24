@@ -36,7 +36,9 @@ def claim(db):
     parameters = resource_info(target, settings)
     return dict(parameters, job=job["id"], operation=job["operation"], lease=lease, mode=settings.mode,
                 revision=target["config_revision"], simulated=target["simulated"],
-                first_port=settings.port_start, last_port=settings.port_end)
+                first_port=settings.port_start, last_port=settings.port_end,
+                current_image=target["current_image"], previous_image=job["previous_image"],
+                desired_image=job["desired_image"], rollback_started=job["rollback_started"])
 
 
 def resource_info(target, settings):
@@ -163,8 +165,16 @@ def material(db, job, target, data):
                 id=target["id"])
 
 
-def finish(db, job, target, error=None, container_id=None):
-    if error:
+def finish(db, job, target, error=None, container_id=None, *, image=None, rolled_back=False):
+    if job["operation"] == "UPGRADE" and (not error or rolled_back):
+        expected = job["previous_image"] if rolled_back else job["desired_image"]
+        if (image != expected or rolled_back != job["rollback_started"] or (rolled_back and error != "UPGRADE_FAILED")
+                or not job["verify_after"] or not target["last_heartbeat_at"]
+                or target["last_heartbeat_at"] <= job["verify_after"]):
+            raise HTTPException(409, "La imagen verificada no coincide con la operación.")
+    elif rolled_back:
+        raise HTTPException(409, "La reversión solo está disponible para actualizaciones.")
+    if error and not rolled_back:
         incident(db, job["company_id"], target["id"], error)
         execute(db, """
             UPDATE connectivity.collectors SET provisioning_status='ERROR',provisioning_step='FAILED',
@@ -194,13 +204,17 @@ def finish(db, job, target, error=None, container_id=None):
         """, id=target["allocation_id"])
         execute(db, """
             UPDATE connectivity.collectors SET docker_container_id=:container,provisioning_status=:status,
-              provisioning_step='COMPLETE',container_state='RUNNING',last_error=NULL,diagnostic=NULL WHERE id=:id
-        """, id=target["id"], container=container_id,
+              provisioning_step='COMPLETE',container_state='RUNNING',last_error=NULL,diagnostic=NULL,
+              current_image=coalesce(:image,current_image),observed_image=coalesce(:image,observed_image) WHERE id=:id
+        """, id=target["id"], container=container_id, image=image,
             status="WAITING_HANDSHAKE" if target["peer_public_key"] else "WAITING_PUBLIC_KEY")
+        if job["operation"] == "UPGRADE":
+            event(db, target, "ERROR" if rolled_back else "CONFIG_CHANGED",
+                  "Imagen anterior restaurada y verificada." if rolled_back else "Imagen nueva verificada.")
     execute(db, """
-        UPDATE connectivity.provisioning_jobs SET status=:status,last_error=:error,error_code=:error,
+        UPDATE connectivity.provisioning_jobs SET status=:status,last_error=:error,error_code=:error,rolled_back=:rollback,
             finished_at=now(),lease_id=NULL,lease_expires_at=NULL WHERE id=:id
-    """, id=job["id"], status="FAILED" if error else "SUCCEEDED", error=error)
+    """, id=job["id"], status="FAILED" if error else "SUCCEEDED", error=error, rollback=rolled_back)
 
 
 def observations(db, items):
@@ -210,14 +224,18 @@ def observations(db, items):
         if not owner:
             continue
         target = collector(db, owner["company_id"], item.id)
-        execute(db, "UPDATE connectivity.collectors SET container_state=:state WHERE id=:id", state=item.state, id=item.id)
+        execute(db, """
+            UPDATE connectivity.collectors SET container_state=:state,observed_image=:image,available_image=:available,
+              current_image=CASE WHEN :state='RUNNING' AND docker_container_id IS NOT NULL
+                                 THEN coalesce(current_image,:image) ELSE current_image END WHERE id=:id
+        """, state=item.state, image=item.image, available=item.available_image, id=item.id)
         if (not target["enabled"] or target["simulated"] != settings.simulated
                 or target["job_status"] in {"PENDING", "RUNNING"} or not target["last_heartbeat_at"]
-                or (target["heartbeat_fresh"] and not item.error)):
+                or (target["heartbeat_fresh"] and not item.error and item.state not in {"MISSING", "EXITED"})):
             continue
         if target["provisioning_status"] not in {"WAITING_PUBLIC_KEY", "WAITING_HANDSHAKE", "READY"}:
             continue
-        reason = item.error or "COLLECTOR_STALE"
+        reason = item.error or ("DOCKER_FAILED" if item.state in {"MISSING", "EXITED"} else "COLLECTOR_STALE")
         incident(db, target["company_id"], item.id, reason)
         event(db, target, "ERROR", reason)
         execute(db, """
@@ -233,3 +251,24 @@ def observations(db, items):
         """, id=item.id)
         if not recent:
             enqueue(db, target["company_id"], item.id, "RECONCILE")
+
+
+def residual_resources(db, resources):
+    known = {(item["id"], item["company_id"]): item for item in rows(db, """
+        SELECT c.id,c.company_id,c.name,c.retired_at,a.docker_network_name
+        FROM connectivity.collectors c LEFT JOIN connectivity.resource_allocations a
+          ON a.company_id=c.company_id AND a.collector_id=c.id AND a.released_at IS NULL
+    """)}
+    residual = []
+    for resource in resources:
+        target = known.get((resource.id, resource.company))
+        status = "UNREFERENCED"
+        if target:
+            expected = {"container": target["name"], "network": target["docker_network_name"],
+                        "volume": target["name"] + "-data"}[resource.kind]
+            if resource.name == expected and target["retired_at"] is None:
+                continue
+            if resource.kind == "volume" and resource.name == expected and target["retired_at"]:
+                status = "RETAINED"
+        residual.append({"name": resource.name, "kind": resource.kind, "status": status})
+    return residual

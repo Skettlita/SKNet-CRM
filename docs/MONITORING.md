@@ -6,6 +6,8 @@ El scheduler vive en cada collector y ejecuta pruebas IPv4 por `wg0`. Obtiene de
 
 Se requiere un equipo instalado, administrativamente habilitado, con perfil solicitado, IPv4 efectiva, sitio vigente, suscripción con `ICMP` y destino incluido en una red WireGuard autorizada. La IPv4 puede ser independiente o heredada por referencia al servicio. Las direcciones repetidas dentro de la empresa se rechazan al solicitar monitoreo y el backend distribuye como máximo un equipo por IP. Empresas distintas pueden usar la misma dirección. El cupo del plan limita la distribución y el perfil respeta el intervalo mínimo del plan.
 
+El listado permite filtrar por cliente, sitio, tipo de catálogo, categoría, rol y estado técnico. Para equipos inelegibles, el listado y la ficha muestran causas como asignación pendiente, IP ausente, red sin autorización, collector no disponible o destino duplicado.
+
 | Parámetro | Valor inicial |
 |---|---|
 | Intervalo de perfil | 30 s. Para el ensayo DEV se configuró 10 s. |
@@ -28,11 +30,16 @@ Con cinco paquetes, cuatro respuestas producen una muestra aceptable con adverte
 - La disponibilidad histórica se calcula sobre comprobaciones aceptables entre las muestras válidas. Los intervalos sin cobertura suficiente se muestran por separado. No es una medición continua del SLA. La retención solo purga muestras y conserva el estado consolidado, los incidentes y la auditoría.
 - Los fallos de infraestructura administrada del collector pueden abrir tickets SaaS mediante la reconciliación existente. Los incidentes de dispositivos o desconexiones de VPN permanecen en el ámbito del ISP salvo evidencia de un problema de plataforma.
 
+La confirmación de caída registra el estado y el incidente en la misma transacción. El listado de incidentes consulta cambios cada cinco segundos mientras está abierto. Los filtros permanecen seleccionados durante la actualización.
+
+Las gráficas ofrecen 30 min, 1 h, 24 h y 7 días con agrupaciones de 2, 5, 60 y 240 minutos, respectivamente. Las escalas de pérdida y disponibilidad abarcan de 0 a 100 %. Un intervalo sin muestras válidas deja un espacio en la serie y una sola agrupación válida aparece como un punto.
+
 ## API y comprobación
 
 - `GET /api/v1/collector/config` obtiene WireGuard y `GET /api/v1/collector/targets` obtiene destinos y perfiles habilitados para el token.
 - `POST /api/v1/collector/heartbeat`, `/connectivity` y `/diagnostics` registran señales de vida y evidencia del enlace.
 - `POST /api/v1/collector/results` valida pertenencia, IP, revisión, contexto, conteos y UUID de medición. PostgreSQL conserva las muestras y sus resultados técnicos.
+- `GET /api/v1/isp/monitoring/device-types` devuelve las opciones de catálogo. `GET /api/v1/isp/monitoring/devices` acepta `type_id` y expone `eligibility_reason`. `GET /api/v1/isp/monitoring/devices/{id}?period=30m` incluye las agrupaciones y muestras de los últimos 30 minutos.
 
 Desde DEV, una vez construido el collector actualizado y aprovisionado en una conexión de prueba con rutas autorizadas, configura un equipo instalado y solicita monitoreo. Consulta **Red → Monitoreo** y **Red → Incidentes**. En la ficha, usa **Monitoreo** para consultar cobertura, latencia, pérdida e historial.
 

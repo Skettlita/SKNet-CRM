@@ -43,12 +43,16 @@ SERVICES = Resource("services", "service", "c.name", "concat_ws(' ',t.service_co
 DEVICES = Resource("devices", "device", "t.name", "concat_ws(' ',t.name,t.device_code,t.brand,t.model,t.serial_number,host(tracked.effective_ip),s.name)",
                    "CASE WHEN t.administrative_active AND t.retired_at IS NULL THEN 'ACTIVE' ELSE 'INACTIVE' END",
                    """, s.name AS site_name,s.client_id,c.name AS client_name,p.name AS service_plan_name,
+                   dt.name AS catalog_type,mf.name AS catalog_manufacturer,dm.name AS catalog_model,
                    host(t.ip_address) AS ip_address_text,host(tracked.effective_ip) AS effective_ip,
                    CASE WHEN NOT t.administrative_active OR t.retired_at IS NOT NULL
                       OR NOT (t.monitoring_requested OR t.monitoring_enabled) THEN 'DISABLED'
                       ELSE 'UNKNOWN' END AS monitoring_state
                    """, """
                    JOIN crm.device_targets tracked ON (tracked.company_id,tracked.id)=(t.company_id,t.id)
+                   JOIN inventory.device_types dt ON (dt.company_id,dt.id)=(t.company_id,t.type_id)
+                   LEFT JOIN inventory.manufacturers mf ON (mf.company_id,mf.id)=(t.company_id,t.manufacturer_id)
+                   LEFT JOIN inventory.device_models dm ON (dm.company_id,dm.id)=(t.company_id,t.model_id)
                    LEFT JOIN crm.sites s ON s.company_id=t.company_id AND s.id=t.site_id
                    LEFT JOIN crm.clients c ON c.company_id=s.company_id AND c.id=s.client_id
                    LEFT JOIN crm.services srv ON srv.company_id=t.company_id AND srv.id=t.service_id
@@ -81,7 +85,7 @@ def details(db, resource, company, record_id):
 
 def listing(db, resource, company, *, q, status, sort, direction, offset, limit,
             client=None, site=None, category=None, site_type=None, device_category=None, isp_site=False,
-            eligible_for=None, linkable_service=False, assignment_state=None):
+            eligible_for=None, linkable_service=False, assignment_state=None, model_id=None, service_id=None):
     ordering = {"name": f"lower({resource.order})", "created": "t.created_at", "status": resource.status}[sort]
     sort_dir = "DESC" if direction == "desc" else "ASC"
     kind_column = {
@@ -102,14 +106,16 @@ def listing(db, resource, company, *, q, status, sort, direction, offset, limit,
         extra_filters = """
           AND (CAST(:device_category AS text) IS NULL OR t.device_category=:device_category)
           AND (CAST(:assignment_state AS text) IS NULL OR t.assignment_state=:assignment_state)
+          AND (CAST(:model AS uuid) IS NULL OR t.model_id=:model)
+          AND (CAST(:service AS uuid) IS NULL OR t.service_id=:service)
           AND (CAST(:capability AS text) IS NULL OR (
                 t.device_category='INFRASTRUCTURE' AND t.administrative_active AND t.retired_at IS NULL
-                AND s.active AND s.archived_at IS NULL AND t.assignment_state IN ('ASSIGNED','INSTALLED')
+                AND s.active AND s.archived_at IS NULL AND t.assignment_state='INSTALLED'
                 AND :capability=ANY(t.capabilities)
           ))
         """
         params = {"device_category": device_category, "capability": ACCESS_CAPABILITY.get(eligible_for),
-                  "assignment_state": assignment_state}
+                  "assignment_state": assignment_state, "model": model_id, "service": service_id}
     if resource is SERVICES and linkable_service:
         extra_filters = "AND t.status<>'CANCELLED'"
     values = rows(db, f"""
@@ -128,12 +134,16 @@ def listing(db, resource, company, *, q, status, sort, direction, offset, limit,
 
 
 def commercial_code(db, company, entity):
+    return f"{CODE_PREFIX[entity]}-{commercial_numbers(db, company, entity, 1).start:06d}"
+
+
+def commercial_numbers(db, company, entity, count):
     number = execute(db, """
-        INSERT INTO crm.commercial_counters(company_id,entity,last_number) VALUES (:company,:entity,1)
-        ON CONFLICT(company_id,entity) DO UPDATE SET last_number=crm.commercial_counters.last_number+1
+        INSERT INTO crm.commercial_counters(company_id,entity,last_number) VALUES (:company,:entity,:count)
+        ON CONFLICT(company_id,entity) DO UPDATE SET last_number=crm.commercial_counters.last_number+EXCLUDED.last_number
         RETURNING last_number
-    """, company=company, entity=entity).scalar_one()
-    return f"{CODE_PREFIX[entity]}-{number:06d}"
+    """, company=company, entity=entity, count=count).scalar_one()
+    return range(number-count+1, number+1)
 
 
 def insert(db, table, company, data):

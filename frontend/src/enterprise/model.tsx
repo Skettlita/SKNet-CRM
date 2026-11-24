@@ -1,9 +1,13 @@
 import type { ReactNode } from "react"
-import { useState } from "react"
+import { useEffect, useId, useState } from "react"
+import { Select as SitePicker } from "@base-ui/react/select"
+import { ChevronDown } from "lucide-react"
 
 import { Field } from "../auth/forms"
+import { useFieldError } from "../auth/formErrors"
+import { api, message } from "../auth/api"
 import type { Account } from "../auth/api"
-import { Select, TextArea, amountText, dateText, integerValue, optionalValue, textValue, useData } from "../platform/shared"
+import { Select, TextArea, amountText, dateText, integerValue, optionalValue, textValue } from "../platform/shared"
 import type { Page } from "../platform/shared"
 
 export type Kind = "clients" | "internet-plans" | "services" | "sites" | "devices"
@@ -100,10 +104,10 @@ export const catalogs: Record<Kind, CatalogSpec> = {
   devices: {
     title: "Dispositivos", singular: "dispositivo", permission: "devices", categories: roles, categoryLabel: "Rol en la red",
     columns: [["Código", string("device_code")], ["Categoría", choice("device_category", deviceCategories)],
-      ["IP de gestión", string("effective_ip")], ["Fabricante", string("brand")], ["Modelo", string("model")],
-      ["Tipo", string("device_type")], ["Rol", choice("device_role", roles)], ["Sitio", string("site_name")]],
+      ["IP de gestión", string("effective_ip")], ["Fabricante", (row) => row.catalog_manufacturer || row.brand || "—"],
+      ["Modelo", (row) => row.catalog_model || row.model || "—"],
+      ["Tipo", (row) => row.catalog_type || row.device_type || "—"], ["Rol", choice("device_role", roles)], ["Sitio", string("site_name")]],
     fields: [name("Nombre del dispositivo"),
-      field("brand", "Fabricante"), field("model", "Modelo"), field("device_type", "Tipo de dispositivo", { required: true }),
       field("serial_number", "Número de serie"), field("mac_address", "MAC del dispositivo", { max: 17 }),
       field("device_role", "Rol en la red", { options: roles, required: true }), description],
   },
@@ -150,34 +154,93 @@ export function payload(spec: FieldSpec[], fields: FormData, prefix = "") {
   ]))
 }
 
+export function useOptions<T>(path: string | null) {
+  const [state, setState] = useState<{ path: string; items: T[]; error?: string }>()
+  useEffect(() => {
+    if (!path) return
+    const controller = new AbortController()
+    async function load() {
+      if (!path) return
+      const items: T[] = []
+      const joiner = path.includes("?") ? "&" : "?"
+      try {
+        let next = true
+        while (next && !controller.signal.aborted) {
+          const batch: Page<T> = await api<Page<T>>("isp", path + joiner + "limit=100&offset=" + items.length,
+            "GET", undefined, controller.signal)
+          items.push(...batch.items)
+          next = batch.has_more && batch.items.length > 0
+        }
+        if (!controller.signal.aborted) setState({ path, items })
+      } catch (error) {
+        if (!controller.signal.aborted) setState({ path, items: [], error: message(error) })
+      }
+    }
+    void load()
+    return () => controller.abort()
+  }, [path])
+  return state?.path === path ? state : { items: [] as T[], error: undefined }
+}
+
+function SiteSelect({ entries, name, label, value, known, required, change }: {
+  entries: Entry[]; name: string; label: string; value: string; known?: string; required?: boolean
+  change: (value: string, site?: Entry) => void
+}) {
+  const labelId = useId()
+  const { error, id, attrs } = useFieldError(name)
+  const selected = entries.find((site) => site.id === value)
+  const placeholder = required ? "Selecciona…" : "Sin asociar"
+  return <div className="form-field">
+    <span id={labelId}>{label}</span>
+    <SitePicker.Root name={name} required={required} value={value || null} onValueChange={(next) =>
+      change(next ?? "", entries.find((site) => site.id === next))}>
+      <SitePicker.Trigger className="site-select-trigger" aria-labelledby={labelId} {...attrs}>
+        <span>{selected ? titleOf("sites", selected) : value ? known || "Registro asociado" : placeholder}
+          {selected?.client_name && <small className="relation-secondary">{selected.client_name}</small>}
+        </span><SitePicker.Icon><ChevronDown size={13} /></SitePicker.Icon>
+      </SitePicker.Trigger>
+      <SitePicker.Portal>
+        <SitePicker.Positioner className="site-select-positioner" alignItemWithTrigger={false} align="start" sideOffset={4}>
+          <SitePicker.Popup className="site-select-popup">
+            {!required && <SitePicker.Item className="site-select-option" value={null}>{placeholder}</SitePicker.Item>}
+            {value && !selected && <SitePicker.Item className="site-select-option" value={value}>{known || "Registro asociado"}</SitePicker.Item>}
+            {entries.map((site) => <SitePicker.Item className="site-select-option" value={site.id} key={site.id}
+              label={[titleOf("sites", site), site.client_name].filter(Boolean).join(" ")}>
+              <SitePicker.ItemText>{titleOf("sites", site)}
+                {site.client_name && <small className="relation-secondary">{site.client_name}</small>}
+              </SitePicker.ItemText>
+            </SitePicker.Item>)}
+          </SitePicker.Popup>
+        </SitePicker.Positioner>
+      </SitePicker.Portal>
+    </SitePicker.Root>
+    {error && <span className="form-error" id={id}>{error}</span>}
+  </div>
+}
+
 export function Relation({ kind, name, label, value, known, account, required, filters, change }: {
   kind: Kind; name: string; label: string; value: string; known?: string; account: Account
   required?: boolean; filters?: Record<string, string>; change: (id: string, record?: Entry) => void
 }) {
-  const [query, setQuery] = useState("")
-  const [selectedName, setSelectedName] = useState(known)
   const canRead = allowed(account, catalogs[kind].permission + ".read")
-  const params = new URLSearchParams({ q: query, limit: "60", ...filters })
-  const result = useData<Page<Entry>>("isp", canRead ? `${crm}/${kind}?${params}` : null)
-  const entries = result.data?.items ?? []
+  const params = new URLSearchParams(filters)
+  const result = useOptions<Entry>(canRead ? `${crm}/${kind}?${params}` : null)
+  const entries = result.items
   const codeField = codeFields[kind]
-  const hasValue = entries.some((item) => item.id === value)
+  const selected = entries.find((item) => item.id === value)
   return <div className="relation-control">
-    {canRead && <Field label={"Buscar " + label.toLowerCase()} type="search" maxLength={120}
-      value={query} onChange={(event) => setQuery(event.target.value)} />}
-    <Select label={label} name={name} required={required} value={value} onChange={(event) => {
+    {kind === "sites" ? <SiteSelect entries={entries} name={name} label={label} value={value} known={known} required={required} change={change} /> :
+      <Select label={label} name={name} required={required} value={value} onChange={(event) => {
       const option = entries.find((item) => item.id === event.target.value)
-      setSelectedName(option && titleOf(kind, option))
       change(event.target.value, option)
     }}>
       <option value="">{required ? "Selecciona…" : "Sin asociar"}</option>
-      {value && !hasValue && <option value={value}>{selectedName || known || "Registro asociado"}</option>}
+      {value && !selected && <option value={value}>{known || "Registro asociado"}</option>}
       {entries.map((item) => <option value={item.id} key={item.id}>
         {titleOf(kind, item)}{codeField && item[codeField] ? " · " + item[codeField] : ""}
       </option>)}
-    </Select>
+    </Select>}
     {result.error && <p className="form-error" role="alert">{result.error}</p>}
     {!canRead && !value && <p className="description">Falta el permiso para consultar {catalogs[kind].title.toLowerCase()}.</p>}
-    {result.data?.has_more && <p className="description">Afina la búsqueda para ver más opciones.</p>}
   </div>
 }

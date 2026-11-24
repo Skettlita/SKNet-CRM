@@ -13,8 +13,9 @@ import {
   deviceCategories, optionsLabel, payload, serviceStates, siteCategories, siteTypes, siteTypesByCategory, titleOf,
 } from "./model"
 import type { Entry, Kind } from "./model"
-import { CustomerRegistration, ServiceFields, SiteFields, serviceInput } from "./Registration"
+import { CustomerRegistration, InitialServiceStatus, ServiceFields, SiteFields, serviceInput } from "./Registration"
 import { AssignAvailable, PlacementFields, ownershipOptions, placementInput } from "./Assignment"
+import { CatalogFields } from "./Inventory"
 
 export function RecordEditor({ kind, entry, account, cancel, complete }: {
   kind: Kind; entry?: Entry; account: Account; cancel: () => void; complete: (record: Entry) => void
@@ -33,13 +34,16 @@ export function RecordEditor({ kind, entry, account, cancel, complete }: {
   if (kind === "clients" && !editing) return <CustomerRegistration account={account} cancel={cancel} complete={complete} />
 
   return <ActionForm label="Guardar" cancel={cancel} submit={async (data) => {
-    const input = kind === "services" ? { ...serviceInput(data), client_id: client, site_id: site } : payload(spec.fields, data)
+    const input = kind === "services" ? { ...serviceInput(data), client_id: client, site_id: site,
+      ...(!editing ? { initial_status: textValue(data, "initial_status") || "PENDING" } : {}) } : payload(spec.fields, data)
     if (kind === "sites") Object.assign(input, {
       client_id: siteCategory === "CUSTOMER" ? client : null, site_category: siteCategory,
       client_address_id: linkedAddress || null,
     })
     if (kind === "devices") Object.assign(input, {
       ...placementInput(data), device_category: deviceCategory, ownership: textValue(data, "ownership"),
+      type_id: textValue(data, "type_id") || null, manufacturer_id: textValue(data, "manufacturer_id") || null,
+      model_id: textValue(data, "model_id") || null,
       capabilities: deviceCategory === "INFRASTRUCTURE" ? data.getAll("capabilities") : [],
     })
     const endpoint = `${crm}/${kind}${editing ? "/" + entry.id : ""}`
@@ -54,6 +58,7 @@ export function RecordEditor({ kind, entry, account, cancel, complete }: {
           account={account} required filters={{ client_id: client, status: "ACTIVE" }} change={setSite} />}
       </div>
       <ServiceFields account={account} entry={entry} />
+      {!editing && <InitialServiceStatus account={account} />}
     </>}
     {kind === "sites" && <>
       <Select label="Categoría del sitio" value={siteCategory} required onChange={(event) => {
@@ -78,6 +83,7 @@ export function RecordEditor({ kind, entry, account, cancel, complete }: {
         {deviceCategories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </Select>
       {deviceCategory && <PlacementFields key={deviceCategory} category={deviceCategory} account={account} entry={entry} />}
+      <CatalogFields account={account} entry={entry} />
       <Select label="Propiedad del equipo" name="ownership" defaultValue={asText(entry, "ownership") || "UNKNOWN"}>
         {ownershipOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
       </Select>
@@ -101,7 +107,8 @@ export function RecordRows({ kind, entries, empty, account }: { kind: Kind; entr
   return <DataTable headers={[kind === "services" ? "Cliente y plan" : "Nombre", ...spec.columns.map(([name]) => name),
     "Estado administrativo", ...(showMonitor ? ["Monitoreo"] : [])]} empty={!entries.length ? empty : undefined}>
     {entries.map((item) => <tr key={item.id}>
-      <td><a className="platform-link" href={appPath(kind, item.id)}>{titleOf(kind, item)}</a></td>
+      <td><a className="platform-link" href={appPath(kind, item.id)}>{titleOf(kind, item)}</a>
+        {kind === "sites" && item.client_name && <small className="relation-secondary">{item.client_name}</small>}</td>
       {spec.columns.map(([column, render]) => <td key={column} className="wrap-cell">{render(item)}</td>)}
       <td><Status value={administrativeStatus(kind, item)} /></td>
       {showMonitor && <td><Status value={asText(item, "monitoring_state")} /></td>}
@@ -116,7 +123,8 @@ export function RelatedRecords({ kind, account, filter, parent }: {
   const [assigning, setAssigning] = useState(false)
   const data = useData<Page<Entry>>("isp", searchPath(`${crm}/${kind}`, pager.offset, filter), pager.version)
   return <>
-  {assigning && <AssignAvailable account={account} clientId={filter.client_id} siteId={filter.site_id}
+  {assigning && <AssignAvailable account={account} clientId={filter.client_id || asText(parent, "client_id")}
+    siteId={filter.site_id || asText(parent, "site_id")} serviceId={filter.service_id}
     category={filter.client_id || parent?.client_id ? "CUSTOMER_EQUIPMENT" : "INFRASTRUCTURE"}
     cancel={() => setAssigning(false)} complete={() => { setAssigning(false); pager.reload() }} />}
   <Panel title={catalogs[kind].title}>

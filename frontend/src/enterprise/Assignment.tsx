@@ -5,6 +5,7 @@ import { ActionForm, Field } from "../auth/forms"
 import { DataTable, DataView, Panel, Pagination, Select, dateText, optionalValue, searchPath, textValue, useData, usePager } from "../platform/shared"
 import type { Page } from "../platform/shared"
 import { Relation, asText, crm, optionsLabel } from "./model"
+import { StockPicker, inventory } from "./Inventory"
 import type { Entry } from "./model"
 
 export const assignmentStates = [["AVAILABLE", "Disponible"], ["ASSIGNED", "Asignado"],
@@ -19,12 +20,12 @@ export function placementInput(form: FormData) {
     ip_mode: textValue(form, "ip_mode") || "NONE", assignment_state: textValue(form, "assignment_state") || "AVAILABLE" }
 }
 
-export function PlacementFields({ account, category, entry, clientId, siteId, startAssigned = false }: {
-  account: Account; category: string; entry?: Entry; clientId?: string; siteId?: string; startAssigned?: boolean
+export function PlacementFields({ account, category, entry, clientId, siteId, serviceId, startAssigned = false }: {
+  account: Account; category: string; entry?: Entry; clientId?: string; siteId?: string; serviceId?: string; startAssigned?: boolean
 }) {
   const [client, setClient] = useState(clientId || asText(entry, "client_id"))
   const [site, setSite] = useState(siteId || asText(entry, "site_id"))
-  const [service, setService] = useState(asText(entry, "service_id"))
+  const [service, setService] = useState(serviceId || asText(entry, "service_id"))
   const [mode, setMode] = useState(asText(entry, "ip_mode") || "NONE")
   const [state, setState] = useState(asText(entry, "assignment_state") !== "AVAILABLE" && entry
     ? asText(entry, "assignment_state") : startAssigned ? "ASSIGNED" : "AVAILABLE")
@@ -47,6 +48,7 @@ export function PlacementFields({ account, category, entry, clientId, siteId, st
       {assigned && <>
         {clientId && <input type="hidden" name="client_id" value={clientId} />}
         {siteId && <input type="hidden" name="site_id" value={siteId} />}
+        {serviceId && <input type="hidden" name="service_id" value={serviceId} />}
         {finalEquipment && !clientId && !siteId && <Relation kind="clients" label="Cliente" name="client_id" value={client}
           known={asText(entry, "client_name")} account={account} required filters={{ status: "ACTIVE" }}
           change={(value) => { setClient(value); changeSite("") }} />}
@@ -54,7 +56,7 @@ export function PlacementFields({ account, category, entry, clientId, siteId, st
           value={site} known={asText(entry, "site_name")} account={account} required
           filters={finalEquipment ? { status: "ACTIVE", client_id: client } : { status: "ACTIVE", isp_site: "true" }}
           change={changeSite} />}
-        {finalEquipment && site && <Relation key={site} kind="services" label="Servicio asociado" name="service_id" value={service}
+        {finalEquipment && site && !serviceId && <Relation key={site} kind="services" label="Servicio asociado" name="service_id" value={service}
           known={asText(entry, "service_plan_name")} account={account} filters={{ site_id: site, linkable_service: "true" }}
           change={(id) => { setService(id); if (!id && mode === "SERVICE") setMode("NONE") }} />}
       </>}
@@ -68,18 +70,19 @@ export function PlacementFields({ account, category, entry, clientId, siteId, st
   </>
 }
 
-export function AssignAvailable({ account, clientId, siteId, category, complete, cancel }: {
-  account: Account; clientId?: string; siteId?: string; category: string; complete: () => void; cancel: () => void
+export function AssignAvailable({ account, clientId, siteId, serviceId, category, complete, cancel }: {
+  account: Account; clientId?: string; siteId?: string; serviceId?: string; category: string; complete: () => void; cancel: () => void
 }) {
-  const [device, setDevice] = useState("")
   return <Panel title="Asignar equipo disponible"><div className="panel-body">
     <ActionForm label="Asignar equipo" cancel={cancel} submit={async (form) => {
-      await api("isp", `${crm}/devices/${device}/assignment`, "POST", { ...placementInput(form), reason: textValue(form, "reason") })
+      const values = { ...placementInput(form), reason: textValue(form, "reason"), only_available: true }
+      const model = optionalValue(form, "model_id")
+      if (model) await api("isp", inventory + "/stock/assign", "POST", { ...values, model_id: model, device_category: category })
+      else await api("isp", `${crm}/devices/${textValue(form,"device_id")}/assignment`, "POST", values)
       complete()
     }}>
-      <Relation kind="devices" name="device_id" label="Equipo disponible" required value={device} account={account}
-        filters={{ assignment_state: "AVAILABLE", device_category: category, status: "ACTIVE" }} change={setDevice} />
-      <PlacementFields account={account} category={category} clientId={clientId} siteId={siteId} startAssigned />
+      <StockPicker account={account} category={category} />
+      <PlacementFields account={account} category={category} clientId={clientId} siteId={siteId} serviceId={serviceId} startAssigned />
       <Field label="Motivo" name="reason" minLength={2} maxLength={500} required defaultValue="Asignación operativa" />
     </ActionForm>
   </div></Panel>

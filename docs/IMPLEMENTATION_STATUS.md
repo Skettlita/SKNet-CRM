@@ -142,6 +142,22 @@ La prueba física del RB5009 corresponde al usuario y precede a esta fase. Las �
 
 DEV migró hasta `0011_icmp_monitoring` y conservó los identificadores de siete registros de CRM, dos collectors históricos, dos túneles y dos credenciales. Se reinició únicamente el backend para cargar las nuevas rutas privadas. El collector operativo conservó su contenedor y sus volúmenes. Los ensayos reales de esta fase usaron un peer Linux descartable de Docker Desktop. El RB5009 no intervino en el ensayo.
 
+## Fase 7 · Estabilización del MVP
+
+| Etapa | Implementación |
+|---|---|
+| A | Alta de cliente y servicio con estado administrativo, nombre automático del sitio a partir del código de cliente y selectores que consultan todas las páginas. Se conservan las órdenes existentes y la creación manual desde servicios pendientes. |
+| B | Catálogos ISP, stock por modelo, generación transaccional de unidades `DSP` y asignación por modelo o unidad. La asignación conserva el estado administrativo del servicio. Los routers de acceso requieren instalación, sitio vigente y capacidad compatible. |
+| C | Eliminación auditada de altas sin actividad histórica protegida, motivos de inelegibilidad ICMP, filtros de catálogo y gráficas con escala porcentual, períodos cortos y puntos aislados. Se mantiene el scheduler y la actualización periódica de incidentes. |
+| D | Actualización individual confirmada por ID de imagen, verificación con heartbeat posterior, reversión con la versión anterior y reconciliación manual independiente del límite automático. El inventario identifica recursos residuales etiquetados y volúmenes conservados. |
+| E | Migraciones aditivas `0012_device_catalogs` y `0013_collector_upgrades`. El overlay opcional de TEST prepara una red de gestión exclusiva para el provisioner, sockets privados y secretos RouterOS montados desde archivos. |
+
+Pasaron 33 pruebas con PostgreSQL aislado, las comprobaciones posteriores de conectividad y residuos, y la compilación del frontend de producción. En Edge con QA se comprobó el registro de 20 unidades, el alta con sitio automático, servicio activo y asignación, el selector de sitios en dos líneas y el punto aislado en las gráficas de 24 h y 30 min con una muestra de prueba. En Docker QA se reemplazó un collector conservando su identidad, clave, token, configuración, volúmenes, red, IP, puerto y mediciones previas de prueba. Una imagen sin heartbeat provocó una reversión verificada. Se recreó el collector tras eliminar solo su contenedor QA y se ejecutó otra reconciliación dentro de la ventana de 15 minutos. Ambas conservaron la última imagen aprobada. Se validaron ambos perfiles de Compose de TEST sin desplegarlos.
+
+DEV migró de `0011_icmp_monitoring` a `0013_collector_upgrades`. Se recargaron backend y provisioner. Se conservaron los registros CRM, collectors, túneles y credenciales comprobados. El collector operativo conservó su ID `35e02728c023`; el histórico pasó de 269 a 273 muestras durante la ventana de migración.
+
+Quedan para Ubuntu/GNS3 los ensayos definitivos de caída/recuperación del dispositivo con la misma IP, caída del túnel y aislamiento entre redes remotas. Los comandos de reproducción y despliegue están en [Entornos](ENVIRONMENTS.md).
+
 La imagen nueva sirve para futuros collectors. El collector DEV que ya estaba en marcha sigue usando su imagen anterior. Cambiar su imagen requiere una ventana autorizada. La verificación de carga y el despliegue Ubuntu quedan pendientes. [Reglas y verificación ICMP](MONITORING.md).
 
 La suite final aprobó 30 pruebas y compiló TypeScript y Vite. Una comprobación adicional validó la eliminación de muestras vencidas, la conservación del incidente de dispositivo y el registro de un incidente por heartbeat vencido. El reinicio de PostgreSQL de QA conservó diez muestras, el incidente recuperado y la orden de prueba. Se mantiene el aviso de deprecación de Starlette/AnyIO.

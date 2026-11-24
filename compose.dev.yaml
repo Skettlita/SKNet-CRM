@@ -32,6 +32,7 @@ services:
   provisioner:
     environment:
       SKNET_CONNECTIVITY_MODE: ${SKNET_CONNECTIVITY_MODE:-simulation}
+      SKNET_INSTALLATION_ID: ${SKNET_INSTALLATION_ID:-sknet-dev}
       SKNET_COLLECTOR_IMAGE: ${SKNET_COLLECTOR_IMAGE:-sknet-collector:dev}
       SKNET_ICMP_CONCURRENCY: ${SKNET_ICMP_CONCURRENCY:-10}
       SKNET_COLLECTOR_API_VOLUME: ${SKNET_COLLECTOR_API_VOLUME:-sknet-dev-collector-api}

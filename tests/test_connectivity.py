@@ -2,6 +2,7 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from secrets import token_urlsafe
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -154,6 +155,15 @@ def test_collector_authentication_script_probe_and_recovery(migrated, admin_id, 
         step(worker_api, job, "finish")
         assert view() is None
         assert migrated.execute("SELECT status FROM connectivity.resource_allocations").fetchone() == ("RELEASED",)
+        reported = [
+            {"id": target["id"], "company": target["company_id"], "kind": "volume", "name": target["name"]+"-data"},
+            {"id": str(uuid4()), "company": target["company_id"], "kind": "network", "name": "red-residual-qa"},
+        ]
+        worker_post(worker_api, "observations", {"inventory": INVENTORY, "items": [], "resources": reported})
+        pools = accepted(request(admin, "GET", "admin/connectivity/pools"))
+        assert [(item["kind"], item["status"]) for item in pools["residual_resources"]] == [
+            ("volume", "RETAINED"), ("network", "UNREFERENCED"),
+        ]
 
 
 def test_connectivity_plan_and_permission_rollback(migrated, admin_id, monkeypatch):
@@ -173,3 +183,39 @@ def test_connectivity_plan_and_permission_rollback(migrated, admin_id, monkeypat
         """)
         assert request(isp, "GET", "isp/connectivity").status_code == 403
         assert migrated.execute("SELECT count(*) FROM connectivity.collectors").fetchone() == (0,)
+
+
+def test_upgrade_requires_saas_and_fresh_heartbeat(migrated, admin_id, monkeypatch):
+    monkeypatch.setenv("SKNET_CONNECTIVITY_MODE", "simulation")
+    old, new = "sha256:" + "1"*64, "sha256:" + "2"*64
+    with TestClient(app) as admin, TestClient(app) as isp, TestClient(worker) as work, TestClient(agent) as agent_api:
+        authentication(admin)
+        setup_isp(admin, isp, "upgrade")
+        target = accepted(request(isp, "POST", "isp/connectivity", NETWORKS))
+        path = f"admin/connectivity/collectors/{target['company_id']}/{target['id']}"
+        job = worker_post(work, "claim", {})
+        step(work, job, "reserve", inventory=INVENTORY)
+        token = token_urlsafe(32)
+        step(work, job, "material", public_key=SERVER_KEY, token_hash=digest(token))
+        config = accepted(devices(agent_api, "config", token))
+        revision = {"revision": config["revision"]}
+        accepted(devices(agent_api, "heartbeat", token, revision))
+        step(work, job, "finish", container_id=COLLECTOR_ID, image=old)
+        assert request(admin, "POST", path+"/upgrade").status_code == 409
+        worker_post(work, "observations", {"inventory": INVENTORY, "items": [
+            {"id": target["id"], "state": "RUNNING", "image": old, "available_image": new}]})
+        assert request(isp, "POST", path+"/upgrade").status_code == 401
+        assert request(admin, "POST", path+"/upgrade", {"expected_image": old}).status_code == 409
+        accepted(request(admin, "POST", path+"/upgrade", {"expected_image": new}))
+        assert request(admin, "POST", path+"/reconcile").status_code == 409
+        job = worker_post(work, "claim", {})
+        assert (job["operation"], job["previous_image"], job["desired_image"]) == ("UPGRADE", old, new)
+        finish_path = "/api/v1/worker/jobs/"+job["job"]+"/finish"
+        completion = {"lease": job["lease"], "container_id": "b"*64, "image": new}
+        assert work.post(finish_path, json=completion).status_code == 409
+        step(work, job, "progress", step="UPGRADING", reset_heartbeat=True)
+        assert work.post(finish_path, json=completion).status_code == 409
+        accepted(devices(agent_api, "heartbeat", token, revision))
+        assert work.post(finish_path, json=completion | {"image": old}).status_code == 409
+        accepted(work.post(finish_path, json=completion))
+        assert migrated.execute("SELECT docker_container_id,current_image FROM connectivity.collectors").fetchone() == ("b"*64, new)

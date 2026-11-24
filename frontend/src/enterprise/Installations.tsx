@@ -10,6 +10,7 @@ import type { Page } from "../platform/shared"
 import { allowed, asText, Relation, crm } from "./model"
 import type { Entry } from "./model"
 import { ServiceFields, serviceInput } from "./Registration"
+import { CatalogFields } from "./Inventory"
 
 const orders = crm + "/installations"
 const path = "/app/installations"
@@ -99,7 +100,7 @@ function AttachEquipment({ account }: { account: Account }) {
       onChange={(event) => setCreate(event.target.checked)} /> Registrar equipo en esta orden</label>}
     {create ? <div className="form-grid">
       <Field name="equipment_name" label="Nombre del equipo" minLength={2} required />
-      <Field name="equipment_type" label="Tipo de dispositivo" required />
+      <CatalogFields account={account} />
       <Field name="serial_number" label="Número de serie" />
     </div> : <Relation kind="devices" label="Equipo disponible" name="device_id" value={device}
       account={account} required filters={{ device_category: "CUSTOMER_EQUIPMENT", assignment_state: "AVAILABLE" }} change={setDevice} />}
@@ -136,7 +137,8 @@ function OrderForm({ account, order, action, cancel, complete }: {
         reason, device_id: optionalValue(form, "device_id"), link_service: form.has("link_service"),
         ip_mode: textValue(form, "ip_mode"), ip_address: optionalValue(form, "ip_address"),
         ...(form.has("create_device") ? { new_device: { name: textValue(form, "equipment_name"),
-          device_type: textValue(form, "equipment_type"), serial_number: optionalValue(form, "serial_number") } } : {}),
+          type_id: textValue(form, "type_id"), manufacturer_id: optionalValue(form, "manufacturer_id"),
+          model_id: optionalValue(form, "model_id"), serial_number: optionalValue(form, "serial_number") } } : {}),
       })
       if (action === "archive") await api("isp", orders + "/" + order.id + "/archive", "POST", { reason })
       if (action === "delete") {

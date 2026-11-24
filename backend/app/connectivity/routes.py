@@ -39,7 +39,7 @@ def routes(request: Request, data: schemas.Routes):
 @isp.post("/retry")
 def retry(request: Request):
     with write(request, "connectivity.write", ISP) as (db, actor):
-        return service.enqueue_action(db, service.collector(db, actor.company), "RECONCILE", actor.id, isp=True)
+        return service.enqueue_action(db, service.collector(db, actor.company), "RECONCILE", actor.id, isp=True, retry=True)
 
 
 @isp.get("/script")
@@ -63,6 +63,9 @@ def list_collectors(request: Request, offset: int = Query(0, ge=0)):
             target = service.collector(db, item["company_id"], item["id"])
             entry = service.public(target)
             entry["company_name"] = item["name"]
+            for field in ("current_image", "observed_image", "available_image", "rolled_back"):
+                entry[field] = target[field]
+            entry["upgrade_available"] = service.upgrade_available(target)
             for field in ("docker_subnet", "wireguard_subnet", "external_udp_port"):
                 entry[field] = target[field] if field == "external_udp_port" else str(target[field]) if target[field] else None
             entry["docker_ip"] = str(ipaddress.IPv4Network(target["docker_subnet"])[2]) if target["docker_subnet"] else None
@@ -75,6 +78,7 @@ def list_jobs(request: Request, offset: int = Query(0, ge=0)):
     with read(request, "connectivity.read") as (db, _):
         items = rows(db, """
             SELECT j.id,j.collector_id,j.operation,j.status,j.attempts,j.created_at,j.started_at,j.finished_at,j.error_code,
+              j.previous_image,j.desired_image,j.rolled_back,
               c.name AS company_name FROM connectivity.provisioning_jobs j JOIN core.companies c ON c.id=j.company_id
             ORDER BY j.created_at DESC,j.id LIMIT 26 OFFSET :offset
         """, offset=offset)
@@ -91,7 +95,7 @@ def pools(request: Request):
             SELECT docker_subnet,wireguard_subnet,external_udp_port,status FROM connectivity.resource_allocations
             WHERE released_at IS NULL
         """)
-        registry = rows(db, "SELECT observed_networks,observed_ports FROM connectivity.network_pools WHERE name=:name",
+        registry = rows(db, "SELECT observed_networks,observed_ports,residual_resources FROM connectivity.network_pools WHERE name=:name",
                         name=settings.installation)
         observed = registry[0] if registry else {"observed_networks": [], "observed_ports": []}
         used_networks = [net for item in allocations for net in (item["docker_subnet"], item["wireguard_subnet"])]
@@ -106,7 +110,8 @@ def pools(request: Request):
              "total": settings.port_end-settings.port_start+1,
              "available": sum(port not in used_ports for port in range(settings.port_start, settings.port_end+1))},
         ]
-        return {"mode": settings.mode, "items": metrics, "reserved": len(allocations)}
+        return {"mode": settings.mode, "items": metrics, "reserved": len(allocations),
+                "residual_resources": observed.get("residual_resources", [])}
 
 
 @admin.get("/system")
@@ -126,7 +131,11 @@ def system(request: Request):
 
 
 @admin.post("/collectors/{company}/{collector_id}/{action}")
-def manage(request: Request, company: UUID, collector_id: UUID, action: Literal["retry", "rotate", "disable", "remove"]):
-    operations = {"retry": "RECONCILE", "rotate": "ROTATE_KEY", "disable": "DISABLE", "remove": "REMOVE"}
+def manage(request: Request, company: UUID, collector_id: UUID,
+           action: Literal["retry", "reconcile", "upgrade", "rotate", "disable", "remove"],
+           data: schemas.AdminAction | None = None):
+    operations = {"retry": "RECONCILE", "reconcile": "RECONCILE", "upgrade": "UPGRADE",
+                  "rotate": "ROTATE_KEY", "disable": "DISABLE", "remove": "REMOVE"}
     with write(request, "connectivity.write") as (db, actor):
-        return service.enqueue_action(db, service.collector(db, company, collector_id), operations[action], actor.id)
+        return service.enqueue_action(db, service.collector(db, company, collector_id), operations[action],
+                                      actor.id, retry=action == "retry", expected_image=data.expected_image if data else None)

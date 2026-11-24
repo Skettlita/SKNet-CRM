@@ -3,6 +3,7 @@ import ipaddress
 import json
 import os
 import tarfile
+from uuid import UUID
 
 import docker
 from docker.errors import NotFound
@@ -67,7 +68,54 @@ class DockerHost:
         self.client.networks.create(name, driver="bridge", ipam=ipam, labels=self.labels(resource),
                                     options={"com.docker.network.bridge.enable_icc": "false"})
 
-    def ensure_container(self, resource, identity, *, restart=False):
+    def available_image(self):
+        image = self.optional(self.client.images, self.image)
+        return image.id if image else None
+
+    def labelled_resources(self, installation):
+        filters = {"label": f"sknet.installation={installation}"}
+        result = []
+        for kind, resources in (
+            ("container", self.client.containers.list(all=True, filters=filters)),
+            ("network", self.client.networks.list(filters=filters)),
+            ("volume", self.client.volumes.list(filters=filters)),
+        ):
+            for resource in resources:
+                labels = resource.attrs.get("Labels") or resource.attrs.get("Config", {}).get("Labels") or {}
+                try:
+                    collector = str(UUID(labels["sknet.collector"]))
+                    company = str(UUID(labels["sknet.company"]))
+                except (KeyError, ValueError):
+                    continue
+                if labels.get("sknet.installation") == installation:
+                    result.append({"id": collector, "company": company, "kind": kind, "name": resource.name})
+        return sorted(result, key=lambda item: (item["kind"], item["name"]))[:4096]
+
+    def validate_runtime(self, resource, container):
+        name = resource["name"]
+        network = resource["network_name"]
+        address = str(ipaddress.IPv4Network(resource["docker_subnet"])[2])
+        port = f"{resource['internal_port']}/udp"
+        host = container.attrs["HostConfig"]
+        mounts = {(mount.get("Name"), mount["Destination"], mount["RW"]) for mount in container.attrs["Mounts"]}
+        endpoints = container.attrs["NetworkSettings"]["Networks"]
+        if (host["Privileged"] or not host["ReadonlyRootfs"]
+                or "no-new-privileges" not in (host["SecurityOpt"] or [])
+                or set(host["CapDrop"] or []) != {"ALL"} or set(host["CapAdd"] or []) != {"NET_ADMIN", "NET_RAW"}
+                or host["NetworkMode"] != network
+                or host["PortBindings"] != {port: [{"HostIp": resource["bind"], "HostPort": str(resource["port"])}]}
+                or mounts != {(name + "-data", "/state", True), (self.api_volume, self.socket_directory, False)}
+                or set(endpoints) - {network}
+                or (network in endpoints and endpoints[network].get("IPAddress") not in ("", address))):
+            raise ValueError("Existing collector does not match its isolated runtime configuration")
+
+    def remove_for_replacement(self, resource, container):
+        self.validate_runtime(resource, container)
+        if container.status in {"running", "restarting"}:
+            container.stop(timeout=5)
+        container.remove(v=False)
+
+    def ensure_container(self, resource, identity, *, restart=False, image=None):
         name = resource["name"]
         volume_name = name + "-data"
         network = resource["network_name"]
@@ -80,7 +128,7 @@ class DockerHost:
             api = self.client.api
             config = api.create_networking_config({network: api.create_endpoint_config(ipv4_address=address)})
             container = self.client.containers.create(
-                self.image, name=name, network=network, networking_config=config,
+                image or self.image, name=name, network=network, networking_config=config,
                 environment={"SKNET_ICMP_CONCURRENCY": self.icmp_workers},
                 labels=self.labels(resource), ports={port: (resource["bind"], resource["port"])},
                 cap_drop=["ALL"], cap_add=["NET_ADMIN", "NET_RAW"],
@@ -92,16 +140,7 @@ class DockerHost:
                     self.api_volume: {"bind": self.socket_directory, "mode": "ro"},
                 },
             )
-        host = container.attrs["HostConfig"]
-        mounts = {(mount.get("Name"), mount["Destination"], mount["RW"]) for mount in container.attrs["Mounts"]}
-        endpoints = container.attrs["NetworkSettings"]["Networks"]
-        if (host["Privileged"] or set(host["CapDrop"] or []) != {"ALL"} or set(host["CapAdd"] or []) != {"NET_ADMIN", "NET_RAW"}
-                or host["NetworkMode"] != network
-                or host["PortBindings"] != {port: [{"HostIp": resource["bind"], "HostPort": str(resource["port"])}]}
-                or mounts != {(volume_name, "/state", True), (self.api_volume, self.socket_directory, False)}
-                or set(endpoints) - {network}
-                or (network in endpoints and endpoints[network].get("IPAddress") not in ("", address))):
-            raise ValueError("Existing collector does not match its isolated runtime configuration")
+        self.validate_runtime(resource, container)
         if restart and container.status == "running":
             container.stop(timeout=5)
             container.reload()

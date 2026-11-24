@@ -60,7 +60,10 @@ class Transition(schemas.Reason):
 
 class NewEquipment(Input):
     name: Name
-    device_type: schemas.Short
+    device_type: schemas.Short | None = None
+    type_id: UUID
+    manufacturer_id: UUID | None = None
+    model_id: UUID | None = None
     device_role: schemas.Role = "ENDPOINT"
     serial_number: schemas.Short | None = None
 

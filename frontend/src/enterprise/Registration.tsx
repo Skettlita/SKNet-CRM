@@ -4,8 +4,9 @@ import { api } from "../auth/api"
 import type { Account } from "../auth/api"
 import { ActionForm, Field } from "../auth/forms"
 import { Select, optionalValue, textValue } from "../platform/shared"
-import { Fields, Relation, allowed, asText, catalogs, crm, installationSituations, payload, siteTypesByCategory } from "./model"
+import { Fields, Relation, allowed, asText, catalogs, crm, payload, siteTypesByCategory } from "./model"
 import type { Entry } from "./model"
+import { StockPicker } from "./Inventory"
 
 export function serviceInput(fields: FormData) {
   const input = payload(catalogs.services.fields, fields)
@@ -48,7 +49,7 @@ export function SiteFields({ entry, category, siteType, sameAddress, requireAddr
   changeType: (value: string) => void; prefix?: string
 }) {
   const fields = catalogs.sites.fields
-    .filter(({ key }) => !sameAddress || !["address", "city"].includes(key))
+    .filter(({ key }) => !sameAddress || !["address", "city", ...(prefix ? ["name"] : [])].includes(key))
     .map((field) => {
       if (field.key === "site_type") return { ...field, options: siteTypesByCategory[category] ?? [] }
       if (field.key === "address") return { ...field, label: "Dirección del sitio", required: requireAddress }
@@ -65,8 +66,9 @@ export function CustomerRegistration({ account, cancel, complete }: {
   const [addService, setAddService] = useState(false)
   const [sameAddress, setSameAddress] = useState(false)
   const [siteType, setSiteType] = useState("")
+  const [assign, setAssign] = useState(false)
+  const canAssign = allowed(account, "inventory.read") && allowed(account, "devices.write")
   const canAddService = ["sites.create", "services.create", "internet_plans.read"].every((permission) => allowed(account, permission))
-  const canActivate = allowed(account, "services.status")
   return <ActionForm label="Guardar cliente" cancel={cancel} submit={async (fields) => {
     const address = optionalValue(fields, "customer_address")
     const customer = payload(catalogs.clients.fields, fields)
@@ -75,8 +77,10 @@ export function CustomerRegistration({ account, cancel, complete }: {
       address: address ? { address, city: optionalValue(fields, "customer_city") } : null,
       ...(addService ? {
         service: serviceInput(fields),
-        site: { ...payload(catalogs.sites.fields, fields, "initial_"), use_client_address: sameAddress },
-        installation_situation: textValue(fields, "installation_situation"),
+        site: { ...payload(catalogs.sites.fields, fields, "initial_"), name: sameAddress ? null : textValue(fields, "initial_name"),
+          use_client_address: sameAddress },
+        initial_status: textValue(fields, "initial_status") || "PENDING",
+        ...(assign ? { equipment: { model_id: optionalValue(fields, "model_id"), device_id: optionalValue(fields, "device_id") } } : {}),
       } : {}),
     })
     complete(result.client)
@@ -95,21 +99,25 @@ export function CustomerRegistration({ account, cancel, complete }: {
       <section aria-labelledby="registration-service" className="crm-form-section">
         <h3 id="registration-service">Servicio contratado</h3>
         <ServiceFields account={account} />
+        <InitialServiceStatus account={account} />
       </section>
+      {canAssign && <section className="crm-form-section">
+        <label className="checkbox-label"><input type="checkbox" checked={assign} onChange={(event) => setAssign(event.target.checked)} />
+          Asignar equipamiento del cliente</label>
+        {assign && <StockPicker account={account} category="CUSTOMER_EQUIPMENT" />}
+      </section>}
       <section aria-labelledby="registration-site" className="crm-form-section">
         <h3 id="registration-site">Sitio del servicio</h3>
         <label className="checkbox-label"><input type="checkbox" checked={sameAddress}
           onChange={(event) => setSameAddress(event.target.checked)} /> Usar la dirección del cliente</label>
         <SiteFields category="CUSTOMER" siteType={siteType} sameAddress={sameAddress} requireAddress changeType={setSiteType} prefix="initial_" />
       </section>
-      <section aria-labelledby="registration-installation" className="crm-form-section">
-        <h3 id="registration-installation">Situación de la instalación</h3>
-        <Select label="Situación inicial" name="installation_situation" defaultValue="UNDEFINED" required>
-          {installationSituations.filter(([value]) => (value !== "EXISTING" || canActivate) &&
-            (value !== "NEW" || allowed(account, "installations.create")))
-            .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </Select>
-      </section>
     </>}
   </ActionForm>
+}
+
+export function InitialServiceStatus({ account }: { account: Account }) {
+  return allowed(account, "services.status") ? <Select label="Estado inicial del servicio" name="initial_status" defaultValue="PENDING">
+    <option value="PENDING">Pendiente</option><option value="ACTIVE">Activo</option>
+  </Select> : null
 }

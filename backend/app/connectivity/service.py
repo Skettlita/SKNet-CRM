@@ -21,6 +21,8 @@ ERRORS = {
     "COLLECTOR_STALE": "El collector dejó de enviar señales de vida.",
     "CONFIGURATION": "La instalación no tiene una configuración de red compatible.",
     "RETIRE_FAILED": "La infraestructura todavía existe. La reserva se conserva.",
+    "UPGRADE_FAILED": "La imagen nueva no pudo ponerse en servicio.",
+    "ROLLBACK_FAILED": "No pudo verificarse la recuperación con la imagen anterior.",
 }
 
 
@@ -41,7 +43,7 @@ def collector(db, company, collector_id=None):
                v.server_public_key,v.endpoint_host,v.internal_udp_port,v.mtu,v.keepalive_seconds,
                a.id AS allocation_id,a.docker_subnet,a.wireguard_subnet,a.external_udp_port,a.docker_network_name,
                a.edge_rule_tag,a.bind_address,
-               j.id AS job_id,j.status AS job_status,j.operation AS job_operation,j.error_code,
+               j.id AS job_id,j.status AS job_status,j.operation AS job_operation,j.error_code,j.rolled_back,
                (c.last_heartbeat_at IS NOT NULL AND
                  c.last_heartbeat_at > now() - make_interval(secs=>:stale)) AS heartbeat_fresh,
                (v.last_probe_at IS NOT NULL AND
@@ -51,7 +53,7 @@ def collector(db, company, collector_id=None):
         LEFT JOIN connectivity.resource_allocations a ON a.collector_id=c.id AND a.released_at IS NULL
         LEFT JOIN connectivity.vpn_tunnels v ON v.allocation_id=a.id AND v.retired_at IS NULL
         LEFT JOIN LATERAL (
-            SELECT id,status,operation,error_code FROM connectivity.provisioning_jobs
+            SELECT id,status,operation,error_code,rolled_back FROM connectivity.provisioning_jobs
             WHERE collector_id=c.id ORDER BY created_at DESC,id DESC LIMIT 1
         ) j ON true
         LEFT JOIN LATERAL (
@@ -90,10 +92,10 @@ def script_allowed(record):
     return (settings.mode != "disabled" and settings.simulated == record["simulated"]
             and record["enabled"] and record["provisioning_status"] in {"WAITING_PUBLIC_KEY", "WAITING_HANDSHAKE", "READY"}
             and record["heartbeat_fresh"] and record["container_state"] == "RUNNING"
-            and record["job_status"] == "SUCCEEDED" and record["tunnel_id"] is not None)
+            and (record["job_status"] == "SUCCEEDED" or record["rolled_back"]) and record["tunnel_id"] is not None)
 
 
-def enqueue(db, company, collector_id, operation, actor=None):
+def enqueue(db, company, collector_id, operation, actor=None, *, previous=None, desired=None):
     pending = row(db, """
         SELECT id,operation,status FROM connectivity.provisioning_jobs WHERE collector_id=:collector
           AND status IN ('PENDING','RUNNING') ORDER BY created_at LIMIT 1
@@ -101,9 +103,11 @@ def enqueue(db, company, collector_id, operation, actor=None):
     if pending:
         return pending
     return row(db, """
-        INSERT INTO connectivity.provisioning_jobs(company_id,collector_id,operation,idempotency_key,requested_by_user_id)
-        VALUES (:company,:collector,:operation,:key,:actor) RETURNING id, operation, status
-    """, company=company, collector=collector_id, operation=operation, key=str(uuid4()), actor=actor)
+        INSERT INTO connectivity.provisioning_jobs(company_id,collector_id,operation,idempotency_key,
+                                                    requested_by_user_id,previous_image,desired_image)
+        VALUES (:company,:collector,:operation,:key,:actor,:previous,:desired) RETURNING id, operation, status
+    """, company=company, collector=collector_id, operation=operation, key=str(uuid4()), actor=actor,
+        previous=previous, desired=desired)
 
 
 def validate_routes(networks, blocked):
@@ -195,7 +199,14 @@ def incident(db, company, collector_id, code):
     return ticket
 
 
-def enqueue_action(db, target, operation, actor_id, *, isp=False):
+def upgrade_available(target):
+    return bool(target["enabled"] and target["allocation_id"] and target["container_state"] == "RUNNING"
+                and target["heartbeat_fresh"] and target["current_image"]
+                and target["observed_image"] == target["current_image"] and target["available_image"]
+                and target["available_image"] != target["current_image"])
+
+
+def enqueue_action(db, target, operation, actor_id, *, isp=False, retry=False, expected_image=None):
     configuration(required=True)
     if not target:
         raise HTTPException(404, "No se encontró la conexión.")
@@ -203,12 +214,18 @@ def enqueue_action(db, target, operation, actor_id, *, isp=False):
         if operation == target["job_operation"]:
             return public(target)
         raise HTTPException(409, "Hay un trabajo en curso.")
-    if operation == "RECONCILE" and target["provisioning_status"] != "ERROR":
+    if retry and target["provisioning_status"] != "ERROR":
         raise HTTPException(409, "Solo se pueden reintentar trabajos fallidos.")
-    if operation == "RECONCILE" and target["job_operation"] in {"ROTATE_KEY", "DISABLE", "REMOVE"}:
+    if retry and target["job_operation"] in {"ROTATE_KEY", "DISABLE", "REMOVE"}:
         if isp:
             raise HTTPException(403, "Este trabajo requiere la intervención de SKNet.")
         operation = target["job_operation"]
+    if operation == "RECONCILE" and not target["enabled"]:
+        raise HTTPException(409, "El collector está deshabilitado.")
+    if operation == "UPGRADE" and not upgrade_available(target):
+        raise HTTPException(409, "No hay una actualización disponible para un collector operativo.")
+    if operation == "UPGRADE" and expected_image != target["available_image"]:
+        raise HTTPException(409, "La imagen disponible cambió. Revisa la versión y confirma de nuevo.")
     if operation == "ROTATE_KEY" and not script_allowed(target) and target["job_status"] != "FAILED":
         raise HTTPException(409, "Prepara la infraestructura antes de rotar la credencial.")
     if operation in {"DISABLE", "REMOVE"}:
@@ -220,7 +237,8 @@ def enqueue_action(db, target, operation, actor_id, *, isp=False):
     else:
         execute(db, "UPDATE connectivity.collectors SET provisioning_status='PENDING',provisioning_step='QUEUED' WHERE id=:id",
                 id=target["id"])
-    enqueue(db, target["company_id"], target["id"], operation, actor_id)
+    images = {"previous": target["current_image"], "desired": target["available_image"]} if operation == "UPGRADE" else {}
+    enqueue(db, target["company_id"], target["id"], operation, actor_id, **images)
     audit(db, f"connectivity.{operation.lower()}", "collector", target["id"], company=target["company_id"], actor=actor_id)
     return public(collector(db, target["company_id"]))
 

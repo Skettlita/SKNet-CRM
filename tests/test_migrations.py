@@ -21,7 +21,7 @@ def test_migrations_empty_database_and_health(database):
     command.upgrade(config, "head")
     command.upgrade(config, "head")
 
-    assert database.execute("SELECT version_num FROM alembic_version").fetchone() == ("0011_icmp_monitoring",)
+    assert database.execute("SELECT version_num FROM alembic_version").fetchone() == ("0013_collector_upgrades",)
     tables, schemas = database.execute(
         """
         SELECT count(*), count(DISTINCT schemaname)
@@ -29,7 +29,7 @@ def test_migrations_empty_database_and_health(database):
         """,
         (SCHEMAS,),
     ).fetchone()
-    assert (tables, schemas) == (86, 9)
+    assert (tables, schemas) == (89, 9)
     assert database.execute(
         "SELECT count(*) FROM pg_views WHERE schemaname = ANY(%s)",
         (SCHEMAS,),

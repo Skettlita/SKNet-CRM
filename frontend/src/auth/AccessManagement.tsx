@@ -191,7 +191,7 @@ const modules: Record<string, string> = {
   plans: "Planes", subscriptions: "Suscripciones", audit: "Auditoría",
   clients: "Clientes", internet_plans: "Planes de Internet", services: "Servicios", sites: "Sitios",
   devices: "Dispositivos", icmp: "Configuración ICMP", infrastructure: "Infraestructura", crm_history: "Historial CRM", connectivity: "Conectividad",
-  monitoring: "Monitoreo", installations: "Instalaciones",
+  monitoring: "Monitoreo", installations: "Instalaciones", inventory: "Inventario",
 }
 
 function PermissionMatrix({ catalog, current, delegable, readOnly }: {
