@@ -10,7 +10,10 @@ import {
 } from "../platform/shared"
 import type { Page } from "../platform/shared"
 import { RecordEditor, RelatedRecords, StateEditor } from "./Catalog"
-import { administrativeStatus, allowed, appPath, asText, catalogs, crm, optionsLabel, titleOf, valueFor } from "./model"
+import {
+  administrativeStatus, allowed, appPath, asText, capabilities, catalogs, codeFields, crm, deviceCategories,
+  installationSituations, optionsLabel, siteCategories, titleOf, valueFor,
+} from "./model"
 import type { Entry, Kind } from "./model"
 
 type Child = "contacts" | "addresses" | "notes"
@@ -168,21 +171,33 @@ function Monitoring({ entry, account, complete }: { entry: Entry; account: Accou
 }
 
 function General({ kind, entry, account }: { kind: Kind; entry: Entry; account: Account }) {
+  const codeField = codeFields[kind]
   const links: [Kind, string, string, string][] = [
     ["clients", "client_id", "client_name", "Cliente asociado"], ["sites", "site_id", "site_name", "Sitio"],
     ["internet-plans", "plan_id", "plan_name", "Plan de Internet"], ["devices", "access_router_id", "access_router_name", "Router de acceso"],
     ["services", "service_id", "service_plan_name", "Servicio asociado"],
   ]
   return <Panel title="Información general"><dl className="profile-details panel-body">
+    {codeField && <><dt>Código comercial</dt><dd>{asText(entry, codeField)}</dd></>}
     <dt>Estado administrativo</dt><dd><Status value={administrativeStatus(kind, entry)} /></dd>
     <dt>Fecha de alta</dt><dd>{dateText(asText(entry, "created_at"))}</dd>
     {kind === "services" && <>
+      <dt>Situación inicial</dt><dd>{optionsLabel(installationSituations, entry.installation_situation)}</dd>
       <dt>Primera activación</dt><dd>{dateText(asText(entry, "activated_at"))}</dd>
       <dt>Cancelación</dt><dd>{dateText(asText(entry, "cancelled_at"))}</dd>
       <dt>Última observación de IP</dt><dd>{dateText(asText(entry, "service_ip_observed_at"))}</dd>
     </>}
+    {kind === "sites" && <><dt>Categoría del sitio</dt><dd>{optionsLabel(siteCategories, entry.site_category)}</dd></>}
+    {kind === "devices" && <>
+      <dt>Categoría funcional</dt><dd>{optionsLabel(deviceCategories, entry.device_category)}</dd>
+      {entry.device_category === "INFRASTRUCTURE" && <>
+        <dt>Capacidades técnicas</dt><dd>{Array.isArray(entry.capabilities)
+          ? entry.capabilities.map((value) => optionsLabel(capabilities, value)).join(", ") || "—" : "—"}</dd>
+      </>}
+    </>}
     {catalogs[kind].fields.map((item) => <div className="detail-row" key={item.key}>
-      <dt>{item.label}</dt><dd className="preserve-text">{item.options ? optionsLabel(item.options, entry[item.key]) : valueFor(entry, item.key) || "—"}</dd>
+      <dt>{item.label}</dt><dd className="preserve-text">{item.options ? optionsLabel(item.options, entry[item.key])
+        : valueFor(entry, kind === "sites" && (item.key === "address" || item.key === "city") ? "effective_" + item.key : item.key) || "—"}</dd>
     </div>)}
     {links.filter(([, id]) => !!entry[id]).map(([target, id, name, label]) => <div className="detail-row" key={id}>
       <dt>{label}</dt><dd>{allowed(account, catalogs[target].permission + ".read")

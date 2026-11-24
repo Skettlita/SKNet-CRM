@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from app.auth.store import execute, row, rows
 from app.crm import schemas, store
+from app.crm.classification import ACCESS_CAPABILITY
 
 
 MONITORING_QUOTA = """
@@ -18,7 +19,7 @@ SERVICE_TRANSITIONS = {
 }
 
 
-def save(db, actor, resource, fields, record_id=None):
+def save(db, actor, resource, fields, record_id=None, *, installation="UNDEFINED"):
     previous = store.owned(db, resource.table, actor.company, record_id) if record_id else None
     data = fields.model_dump()
     entity = resource.entity
@@ -26,23 +27,27 @@ def save(db, actor, resource, fields, record_id=None):
     if resource is store.CLIENTS:
         if previous is None:
             store.enforce_limit(db, actor, "max_clients", "clients")
-        duplicate = row(db, """
-            SELECT id FROM crm.clients WHERE company_id=:company AND client_code=:code
-              AND id IS DISTINCT FROM CAST(:id AS uuid)
-        """, company=actor.company, code=fields.client_code, id=record_id)
-        if duplicate:
-            raise HTTPException(409, "El código de cliente ya está en uso.")
     elif resource is store.SITES:
-        validate_site(db, actor, fields, previous)
+        validate_site(db, actor, fields, data, previous)
     elif resource is store.SERVICES:
         validate_service(db, actor, fields, data, previous)
+        if previous is None:
+            data["installation_situation"] = installation
+            if installation == "EXISTING":
+                actor.require("services.status")
+                if data["contracted_on"] > company_today(db, actor.company):
+                    raise HTTPException(422, "Un servicio activo no puede tener una fecha de contratación futura.")
+                data.update(status="ACTIVE", activated_at=datetime.now(UTC))
     elif resource is store.DEVICES:
         client = validate_device(db, actor, fields, data, previous)
 
     if record_id is None:
+        if entity in store.CODE_PREFIX:
+            data[f"{entity}_code"] = store.commercial_code(db, actor.company, entity)
         record_id = store.insert(db, resource.table, actor.company, data)
         if resource is store.SERVICES:
-            service_history(db, actor, record_id, None, "PENDING", None)
+            notes = {"NEW": "Requiere instalación", "EXISTING": "Servicio previamente instalado"}
+            service_history(db, actor, record_id, None, data.get("status", "PENDING"), notes.get(installation))
     else:
         store.update(db, resource.table, actor.company, record_id, data)
     before = {key: previous[key] for key in data} if previous else None
@@ -53,15 +58,48 @@ def save(db, actor, resource, fields, record_id=None):
     return store.details(db, resource, actor.company, record_id)
 
 
-def validate_site(db, actor, fields, previous):
+def register_customer(db, actor, fields):
+    if fields.service:
+        actor.require("sites.create")
+        actor.require("services.create")
+        if fields.installation_situation == "EXISTING":
+            actor.require("services.status")
+    profile = schemas.Client.model_validate(fields.model_dump(exclude={"address", "service", "site", "installation_situation"}))
+    client = save(db, actor, store.CLIENTS, profile)
+    address_id = None
+    if fields.address:
+        address = fields.address.model_dump()
+        address_id = store.insert(db, store.ADDRESSES, actor.company, {**address, "client_id": client["id"]})
+        store.change_event(db, actor, "address", address_id, "create", after=address, client=client["id"])
+    site, service = None, None
+    if fields.site:
+        site_fields = schemas.Site(
+            **fields.site.model_dump(exclude={"use_client_address"}), client_id=client["id"],
+            client_address_id=address_id if fields.site.use_client_address else None,
+        )
+        site = save(db, actor, store.SITES, site_fields)
+        service_fields = schemas.Service(**fields.service.model_dump(), client_id=client["id"], site_id=site["id"])
+        service = save(db, actor, store.SERVICES, service_fields, installation=fields.installation_situation)
+    return {"client": client, "site": site, "service": service}
+
+
+def validate_site(db, actor, fields, data, previous):
     if fields.client_id:
         store.owned(db, "clients", actor.company, fields.client_id)
     if previous and fields.client_id != previous["client_id"]:
         used = row(db, """
-            SELECT id FROM crm.services WHERE company_id=:company AND site_id=:site LIMIT 1
+            SELECT id FROM crm.services WHERE company_id=:company AND site_id=:site
+            UNION ALL SELECT id FROM crm.devices WHERE company_id=:company AND site_id=:site LIMIT 1
         """, company=actor.company, site=previous["id"])
         if used:
-            raise HTTPException(409, "El sitio tiene servicios asociados. Conserva su cliente.")
+            raise HTTPException(409, "El sitio tiene servicios o equipos asociados. Conserva su cliente.")
+    if (previous and "client_address_id" not in fields.model_fields_set and fields.client_id == previous["client_id"]
+            and not fields.address and not fields.city):
+        data["client_address_id"] = previous["client_address_id"]
+    if data["client_address_id"]:
+        linked = store.owned(db, store.ADDRESSES, actor.company, data["client_address_id"])
+        if linked["client_id"] != fields.client_id:
+            raise HTTPException(422, "La dirección debe pertenecer al cliente del sitio.")
 
 
 def company_today(db, company_id, when=None):
@@ -82,10 +120,13 @@ def validate_service(db, actor, fields, data, previous):
             raise HTTPException(409, "Selecciona un cliente, sitio y plan habilitados para la nueva asociación.")
     if fields.access_router_id:
         router = store.owned(db, "devices", actor.company, fields.access_router_id)
-        if (not previous or previous["access_router_id"] != fields.access_router_id) and (
-            router["retired_at"] or not router["administrative_active"]
-        ):
-            raise HTTPException(409, "El router de acceso debe estar habilitado.")
+        if not previous or previous["access_router_id"] != fields.access_router_id or previous["access_method"] != fields.access_method:
+            router_site = store.owned(db, "sites", actor.company, router["site_id"])
+            if router["retired_at"] or not router["administrative_active"] or not router_site["active"]:
+                raise HTTPException(409, "El router de acceso debe estar habilitado y en un sitio activo.")
+            if (router["device_category"] != "INFRASTRUCTURE"
+                    or ACCESS_CAPABILITY[fields.access_method] not in router["capabilities"]):
+                raise HTTPException(422, "Selecciona un equipo de infraestructura compatible con la modalidad de acceso.")
     if previous and previous["site_id"] != fields.site_id and row(db, """
         SELECT id FROM crm.devices WHERE company_id=:company AND service_id=:service LIMIT 1
     """, company=actor.company, service=previous["id"]):
@@ -106,15 +147,43 @@ def validate_service(db, actor, fields, data, previous):
 
 def validate_device(db, actor, fields, data, previous):
     site = store.owned(db, "sites", actor.company, fields.site_id)
+    category = "CUSTOMER_EQUIPMENT" if site["site_category"] == "CUSTOMER" else "INFRASTRUCTURE"
+    if fields.device_category is not None and fields.device_category != category:
+        raise HTTPException(422, "La categoría del dispositivo debe coincidir con la del sitio.")
+    if fields.client_id is not None:
+        store.owned(db, "clients", actor.company, fields.client_id)
+        if fields.client_id != site["client_id"]:
+            raise HTTPException(422, "El sitio debe pertenecer al cliente del dispositivo.")
+    data.pop("client_id")
+    data["device_category"] = category
+    capabilities = fields.capabilities
+    if capabilities is None:
+        capabilities = previous["capabilities"] if previous and category == "INFRASTRUCTURE" else []
+    if category == "CUSTOMER_EQUIPMENT" and capabilities:
+        raise HTTPException(422, "Las capacidades de red se asignan a equipos de infraestructura.")
+    data["capabilities"] = sorted(capabilities)
     if (not previous or previous["site_id"] != fields.site_id) and not site["active"]:
         raise HTTPException(409, "Selecciona un sitio habilitado.")
     if fields.service_id:
         service = store.owned(db, "services", actor.company, fields.service_id)
-        if service["site_id"] != fields.site_id:
-            raise HTTPException(422, "El sitio del dispositivo debe coincidir con el del servicio.")
+        if category != "CUSTOMER_EQUIPMENT" or service["site_id"] != fields.site_id or service["client_id"] != site["client_id"]:
+            raise HTTPException(422, "El equipo final, el cliente, el sitio y el servicio deben coincidir.")
         if (not previous or previous["service_id"] != fields.service_id) and service["status"] == "CANCELLED":
             raise HTTPException(409, "Selecciona un servicio que no esté cancelado.")
     if previous:
+        for optional_field in ("serial_number", "mac_address"):
+            if optional_field not in fields.model_fields_set:
+                data.pop(optional_field)
+        if previous["device_category"] != category or set(previous["capabilities"]) - set(capabilities):
+            references = rows(db, """
+                SELECT DISTINCT access_method FROM crm.services
+                WHERE company_id=:company AND access_router_id=:id AND status<>'CANCELLED'
+            """, company=actor.company, id=previous["id"])
+            if any(category != "INFRASTRUCTURE" or (
+                ACCESS_CAPABILITY[item["access_method"]] in previous["capabilities"]
+                and ACCESS_CAPABILITY[item["access_method"]] not in capabilities
+            ) for item in references):
+                raise HTTPException(409, "El equipo proporciona acceso a servicios vigentes. Conserva las capacidades en uso.")
         if previous["retired_at"]:
             raise HTTPException(409, "El dispositivo retirado solo está disponible para consulta.")
         ip_changed = (str(previous["ip_address"]) if previous["ip_address"] else None) != fields.ip_address

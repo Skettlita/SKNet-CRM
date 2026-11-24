@@ -60,5 +60,10 @@ ICMP: cinco paquetes, pérdida superior a 30% cuenta como fallo, RTT superior a 
 
 - `0006_connectivity` añade redes deseadas, diagnóstico, estado del contenedor, revisión aplicada e indicador de simulación al collector. Añade lease temporal y código de error a los trabajos, dirección de bind a las reservas e inventario observado a los pools.
 - La funcionalidad `CONNECTIVITY` controla el acceso ISP. Se reutilizan el índice de un collector vigente por empresa, las asignaciones únicas de red y puerto, las credenciales con hash y la deduplicación de tickets activos. Los roles de conectividad tienen permisos de lectura y escritura separados en ambos ámbitos.
+
+## Fase 4.1
+
+- `0007_crm_workflow` agrega `crm.commercial_counters` para asignar códigos por empresa y entidad. El contador se incrementa mediante un UPSERT en la transacción del alta. Las restricciones únicas siguen asociadas a la empresa.
+- La categoría del sitio se valida junto al tipo. Un sitio puede referenciar una dirección ya registrada del mismo cliente mediante una FK compuesta. El equipo final deriva su cliente del sitio y la FK existente asegura que su servicio opcional use ese mismo sitio. Las capacidades se guardan en los equipos de infraestructura y la situación de instalación inicial se guarda en el servicio. [Reglas y migración de registros anteriores](CRM.md).
 - `crm.services.service_ip` y su fecha de observación registran la dirección informativa del servicio. El precio y moneda quedan registrados en el contrato comercial del servicio. Los cambios administrativos se registran en el historial; la suspensión o baja de un cliente conserva sus servicios y sus dispositivos.
 - Los sitios de tipo CLIENT_SITE pertenecen a un cliente. Los demás tipos se usan para infraestructura propia. Si un dispositivo pertenece a un sitio de cliente, su cliente se deriva de ese sitio. La vinculación al servicio es opcional y debe coincidir con el sitio.

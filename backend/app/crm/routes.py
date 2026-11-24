@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.auth.store import ISP, execute, row, rows
 from app.crm import operations, schemas, store
+from app.crm.classification import AccessMethod, DeviceCategory
 from app.platform.routes import read, write
 
 
@@ -18,11 +19,15 @@ def resource_routes(path, permission, resource, input_model):
     @router.get(path)
     def list_records(request: Request, q: str = Search, status: str | None = None, category: str | None = None,
                      client_id: UUID | None = None, site_id: UUID | None = None,
+                     site_type: str | None = None, device_category: DeviceCategory | None = None,
+                     isp_site: bool = False, eligible_for: AccessMethod | None = None, linkable_service: bool = False,
                      sort: Literal["name", "created", "status"] = "name",
                      direction: Literal["asc", "desc"] = "asc", offset: int = Offset, limit: int = Limit):
         with read(request, permission + ".read", ISP) as (db, actor):
             return store.listing(db, resource, actor.company, q=q, status=status, category=category,
-                                 client=client_id, site=site_id, sort=sort, direction=direction, offset=offset, limit=limit)
+                                 client=client_id, site=site_id, sort=sort, direction=direction, offset=offset, limit=limit,
+                                 site_type=site_type, device_category=device_category, isp_site=isp_site,
+                                 eligible_for=eligible_for, linkable_service=linkable_service)
 
     @router.get(path + "/{record_id}")
     def get_record(record_id: UUID, request: Request):
@@ -54,6 +59,12 @@ resource_routes("/internet-plans", "internet_plans", store.PLANS, schemas.Intern
 resource_routes("/sites", "sites", store.SITES, schemas.Site)
 resource_routes("/services", "services", store.SERVICES, schemas.Service)
 resource_routes("/devices", "devices", store.DEVICES, schemas.Device)
+
+
+@router.post("/clients/register", status_code=201)
+def register_customer(data: schemas.Registration, request: Request):
+    with write(request, "clients.create", ISP) as (db, actor):
+        return operations.register_customer(db, actor, data)
 
 
 def child_routes(path, table, entity, input_model, *, append_only=False):
@@ -167,7 +178,7 @@ def infrastructure(request: Request, q: str = Search, role: schemas.Role | None 
                    d.id AS device_id,d.name AS device_name,d.device_role,
                    d.administrative_active AND d.retired_at IS NULL AS device_active
             FROM crm.sites s LEFT JOIN crm.devices d ON d.company_id=s.company_id AND d.site_id=s.id
-            WHERE s.company_id=:company AND s.client_id IS NULL
+            WHERE s.company_id=:company AND s.site_category IN ('NETWORK','FACILITY')
               AND (CAST(:role AS text) IS NULL OR d.device_role=:role)
               AND strpos(lower(concat_ws(' ',s.name,d.name)),lower(:q))>0
             ORDER BY lower(s.name),lower(d.name),s.id,d.id OFFSET :offset LIMIT :limit

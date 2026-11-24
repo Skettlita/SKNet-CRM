@@ -20,13 +20,13 @@ def get(client, path, params=None):
     return accepted(client.get("/api/v1/" + CRM + path, params=params))
 
 
-def client_fields(code, name="Cliente Uno"):
-    return {"client_code": code, "client_type": "PERSON", "name": name, "document_type": "CI",
+def client_fields(name="Cliente Uno"):
+    return {"client_type": "PERSON", "name": name, "document_type": "CI",
             "document_number": "1234", "phone": "+591 70001234", "email": "cliente@example.com"}
 
 
-def make_client(client, code="ISP-1", name="Cliente Uno"):
-    return make(client, "clients", client_fields(code, name))
+def make_client(client, name="Cliente Uno"):
+    return make(client, "clients", client_fields(name))
 
 
 def make_plan(client):
@@ -56,11 +56,12 @@ def test_clients_contacts_addresses_notes_and_state(migrated, admin_id):
         customer = make_client(isp)
         cid = customer["id"]
         updated = accepted(request(isp, "PUT", CRM + f"clients/{cid}", {
-            **client_fields("ISP-1", "Empresa Uno"), "client_type": "COMPANY",
+            **client_fields("Empresa Uno"), "client_type": "COMPANY",
             "document_type": "NIT", "observations": "Nota previa",
         }))
         assert updated["name"] == "Empresa Uno" and updated["client_type"] == "COMPANY"
-        assert request(isp, "POST", CRM + "clients", client_fields("ISP-1")).status_code == 409
+        assert updated["client_code"] == customer["client_code"] == "CLI-000001"
+        assert request(isp, "POST", CRM + "clients", {**client_fields(), "client_code": "CLI-000001"}).status_code == 422
 
         first = make(isp, f"clients/{cid}/contacts", {"name": "Contacto Uno", "is_primary": True})
         second = make(isp, f"clients/{cid}/contacts", {"name": "Contacto Dos", "is_primary": True})
@@ -98,6 +99,7 @@ def test_services_sites_and_device_configuration(migrated, admin_id):
         second_site = make_site(isp, "Instalación dos", customer)
         router = make(isp, "devices", {
             **device_data(own, "192.168.10.1", "Router central"), "device_role": "NODE", "device_type": "Router",
+            "capabilities": ["PPPOE_SERVER", "DHCP_SERVER", "ACCESS_ROUTER"],
         })
         assert router["client_id"] is None and router["service_id"] is None
 

@@ -37,6 +37,8 @@ curl --fail http://127.0.0.1:5173/api/v1/health
 
 Abre [Login ISP](http://127.0.0.1:5173/login) o [Login SaaS](http://127.0.0.1:5173/admin/login). Si cambiaste `WEB_PORT`, ajusta el puerto también en la URL de verificación. El frontend reenvía `/api` al backend y PostgreSQL permanece en una red privada. El provisioner comprueba Docker y procesa las solicitudes de conectividad en segundo plano.
 
+`WEB_BIND` define la interfaz en la que DEV publica el frontend. Usa `127.0.0.1` para acceso local o `0.0.0.0` para una prueba desde la LAN. Para acceder desde otro equipo, ajusta `SKNET_ORIGIN` a la URL exacta con la IP o nombre del host y el puerto. `SKNET_UDP_BIND` y `SKNET_WG_ENDPOINT` configuran los collectors por separado.
+
 ## Crear el primer administrador SaaS
 
 Con DEV en marcha, ejecuta este comando en una terminal interactiva. Pide nombre completo, usuario, correo y confirmación de la contraseña de al menos 12 caracteres.
@@ -68,14 +70,15 @@ El plan TRIAL inicial cuesta Bs 0, sin vencimiento ni límite de usuarios. Los c
 
 ## Verificación del CRM empresarial
 
-1. En el [panel ISP](http://127.0.0.1:5173/app), abre **CRM → Clientes** y registra una persona o empresa. En su ficha agrega contactos, una dirección y una nota.
-2. En **CRM → Planes de Internet**, crea el plan que se ofrecerá al abonado. Luego registra un **Sitio de cliente** asociado al cliente y, por separado, un **Nodo** u otro sitio de infraestructura propia.
-3. En **CRM → Servicios**, contrata un plan en un sitio del cliente. Selecciona PPPoE, DHCP, IP estática u otro acceso y registra la IP del servicio solo cuando se conozca. Activa o suspende el servicio desde su ficha y consulta el historial.
-4. En **Red → Dispositivos**, registra un equipo en el sitio del cliente y vincúlalo a su servicio. Registra también un equipo en el nodo propio sin cliente ni servicio. Consulta ambos desde los módulos correspondientes y revisa **Red → Infraestructura**.
-5. En la ficha del dispositivo abre **Monitoreo**. Guarda los parámetros ICMP y solicita monitoreo para un dispositivo activo con una IPv4 de gestión. Se mostrará **Sin datos**. Si la solicitud está deshabilitada, se mostrará **Deshabilitada**.
-6. Revisa el dashboard del ISP y la actividad en la ficha del cliente o del dispositivo. Para un plan SaaS personalizado, habilita **CRM** y, si corresponde, **Configuración ICMP** en una versión del plan. Los permisos se asignan desde **Roles y permisos** y la empresa debe tener una suscripción que incluya la funcionalidad.
+1. En el [panel ISP](http://127.0.0.1:5173/app), abre **CRM → Clientes → Registrar cliente**. Guarda un cliente sin servicio y verifica su código automático.
+2. Crea un **Plan de Internet** y registra otro cliente con **Registrar un servicio contratado**. Elige el plan, comprueba el precio y la moneda, modifica el importe y elige si el sitio usa la dirección del cliente. Registra un servicio existente como activo y un alta nueva como pendiente. Verifica los resultados en las pestañas **Sitios** y **Servicios** de cada ficha.
+3. Desde **Sitios** y **Servicios**, agrega otro sitio y otro servicio al mismo cliente. Prueba las pestañas de categorías del catálogo, busca por código o cliente y verifica que el selector de servicios solo muestre sitios del cliente que elegiste.
+4. En **Red → Dispositivos**, registra un equipo de infraestructura en un sitio propio, asígnale capacidad **Servidor PPPoE** y selecciónalo como router de acceso de dos servicios PPPoE. Registra un equipo final en el sitio de un abonado y prueba la asociación opcional al servicio. Comprueba que ambos tipos conservan su IP de gestión y sus opciones de monitoreo.
+5. Entra con un usuario que solo pueda crear clientes y verifica que el formulario carezca de la opción de contratar un servicio. Para un plan SaaS personalizado, habilita **CRM** y, si corresponde, **Configuración ICMP** en la versión asignada a la empresa.
 
 El límite de clientes se aplica al total registrado. El límite de dispositivos se aplica a los equipos activos reservados para monitoreo o habilitados. Los equipos de inventario lógico que no solicitan monitoreo no consumen ese cupo.
+
+Consulta las reglas del alta integrada, las capacidades de routers de acceso y el tratamiento de datos anteriores en [CRM.md](docs/CRM.md).
 
 ## Recuperación
 
@@ -138,4 +141,4 @@ Para incluir las pruebas de migración, autenticación y aislamiento, configura 
 
 `compose.yaml` se combina con `compose.dev.yaml`, `compose.test.yaml` o `compose.prod.yaml`. Cada overlay define un nombre de proyecto, redes y volúmenes independientes por proyecto y un puerto web distinto. Usa un archivo de variables separado por ambiente. TEST y PROD quedan preparados para validación posterior. Consulta [entornos](docs/ENVIRONMENTS.md) y [estado de implementación](docs/IMPLEMENTATION_STATUS.md).
 
-La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. El panel ISP incorpora CRM y configuración ICMP. El aprovisionamiento y las comprobaciones de red quedan para las fases siguientes.
+La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. El panel ISP incorpora CRM, conectividad WireGuard y configuración ICMP. El scheduler de monitoreo de dispositivos queda para una fase posterior.

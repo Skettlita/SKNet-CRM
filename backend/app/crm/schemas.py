@@ -8,6 +8,9 @@ from uuid import UUID
 from pydantic import AwareDatetime, EmailStr, Field, StringConstraints, field_validator, model_validator
 
 from app.auth.schemas import Input, Name, Note
+from app.crm.classification import (
+    AccessMethod, Capability, DeviceCategory, InstallationSituation, LEGACY_SITE_TYPES, SITE_CATEGORY, SiteCategory,
+)
 
 
 Short = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
@@ -16,7 +19,6 @@ Phone = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\+?[0
 Price = Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=2)]
 Currency = Annotated[str, StringConstraints(strip_whitespace=True, to_upper=True, pattern=r"^[A-Z]{3}$")]
 Speed = Annotated[int, Field(ge=1, le=2147483647)]
-SiteType = Literal["CLIENT_SITE", "WAREHOUSE", "OFFICE", "NODE", "TOWER", "WORKSHOP", "OTHER"]
 Role = Literal["NODE", "INTERMEDIATE", "ENDPOINT"]
 ServiceStatus = Literal["PENDING", "ACTIVE", "SUSPENDED", "CANCELLED"]
 
@@ -31,7 +33,6 @@ def address(value, *, ipv4_only=False):
 
 
 class Client(Input):
-    client_code: Short
     client_type: Literal["PERSON", "COMPANY"]
     name: Name
     document_type: Short | None = None
@@ -70,33 +71,54 @@ class InternetPlan(Input):
     currency: Currency = "BOB"
 
 
-class Site(Input):
+class SiteDetails(Input):
     name: Name
-    site_type: SiteType
-    client_id: UUID | None = None
+    site_type: Short
     address: Long | None = None
     city: Short | None = None
     latitude: Annotated[Decimal, Field(ge=-90, le=90, decimal_places=6)] | None = None
     longitude: Annotated[Decimal, Field(ge=-180, le=180, decimal_places=6)] | None = None
     description: Long | None = None
 
+    @field_validator("site_type")
+    @classmethod
+    def known_type(cls, value):
+        value = LEGACY_SITE_TYPES.get(value, value)
+        if value not in SITE_CATEGORY:
+            raise ValueError("Selecciona un tipo de sitio válido.")
+        return value
+
     @model_validator(mode="after")
-    def association(self):
-        if (self.site_type == "CLIENT_SITE") != (self.client_id is not None):
-            raise ValueError("El tipo Sitio de cliente requiere un cliente. Los demás tipos son infraestructura propia.")
+    def paired_coordinates(self):
         if (self.latitude is None) != (self.longitude is None):
             raise ValueError("Registra latitud y longitud juntas.")
         return self
 
 
-class Service(Input):
-    client_id: UUID
-    site_id: UUID
+class Site(SiteDetails):
+    site_category: SiteCategory | None = None
+    client_id: UUID | None = None
+    client_address_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def association(self):
+        category = SITE_CATEGORY[self.site_type]
+        if self.site_category and self.site_category != category:
+            raise ValueError("El tipo de sitio no pertenece a la categoría seleccionada.")
+        if (category == "CUSTOMER") != (self.client_id is not None):
+            raise ValueError("Los sitios de cliente requieren un abonado.")
+        if self.client_address_id and (not self.client_id or self.address or self.city):
+            raise ValueError("Selecciona una dirección del cliente o registra una dirección propia para el sitio.")
+        self.site_category = category
+        return self
+
+
+class ServiceDetails(Input):
     plan_id: UUID
     monthly_price: Price | None = None
     currency: Currency | None = None
     contracted_on: date | None = None
-    access_method: Literal["PPPOE", "DHCP", "STATIC", "OTHER"]
+    access_method: AccessMethod
     ip_assignment: Literal["DYNAMIC", "FIXED"] | None = None
     pppoe_username: Short | None = None
     service_ip: Short | None = None
@@ -113,9 +135,7 @@ class Service(Input):
     @field_validator("access_mac")
     @classmethod
     def check_mac(cls, value):
-        if value and not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", value):
-            raise ValueError("Usa una MAC con formato AA:BB:CC:DD:EE:FF.")
-        return value.lower() if value else None
+        return mac_address(value)
 
     @model_validator(mode="after")
     def validate_access(self):
@@ -125,6 +145,48 @@ class Service(Input):
             if self.ip_assignment == "DYNAMIC":
                 raise ValueError("El acceso estático requiere asignación fija.")
             self.ip_assignment = "FIXED"
+        return self
+
+
+def mac_address(value):
+    if value and not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", value):
+        raise ValueError("Usa una MAC con formato AA:BB:CC:DD:EE:FF.")
+    return value.lower() if value else None
+
+
+class Service(ServiceDetails):
+    client_id: UUID
+    site_id: UUID
+
+
+class InitialSite(SiteDetails):
+    use_client_address: bool = False
+
+    @model_validator(mode="after")
+    def customer_site(self):
+        if SITE_CATEGORY[self.site_type] != "CUSTOMER":
+            raise ValueError("El sitio inicial debe pertenecer al cliente.")
+        if self.use_client_address and (self.address or self.city):
+            raise ValueError("Selecciona la dirección del cliente o registra una dirección diferente.")
+        if not self.use_client_address and not self.address:
+            raise ValueError("Registra la dirección del sitio.")
+        return self
+
+
+class Registration(Client):
+    address: Address | None = None
+    service: ServiceDetails | None = None
+    site: InitialSite | None = None
+    installation_situation: InstallationSituation = "UNDEFINED"
+
+    @model_validator(mode="after")
+    def complete(self):
+        if bool(self.service) != bool(self.site):
+            raise ValueError("El alta de un servicio requiere un sitio.")
+        if self.site and self.site.use_client_address and not self.address:
+            raise ValueError("Completa primero la dirección del cliente.")
+        if self.installation_situation != "UNDEFINED" and not self.service:
+            raise ValueError("La situación de instalación requiere un servicio.")
         return self
 
 
@@ -138,11 +200,28 @@ class Device(Input):
     model: Short | None = None
     description: Long | None = None
     ip_address: Short | None = None
+    serial_number: Short | None = None
+    mac_address: Short | None = None
+    client_id: UUID | None = None
+    device_category: DeviceCategory | None = None
+    capabilities: list[Capability] | None = Field(default=None, max_length=4)
 
     @field_validator("ip_address")
     @classmethod
     def check_ip(cls, value):
         return address(value, ipv4_only=True)
+
+    @field_validator("mac_address")
+    @classmethod
+    def check_mac(cls, value):
+        return mac_address(value)
+
+    @field_validator("capabilities")
+    @classmethod
+    def unique_capabilities(cls, values):
+        if values is not None and len(set(values)) != len(values):
+            raise ValueError("Cada capacidad puede seleccionarse una sola vez.")
+        return values
 
 
 class State(Input):

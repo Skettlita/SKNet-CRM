@@ -112,3 +112,20 @@ El collector, el aprovisionamiento, las mediciones de red y los módulos posteri
 - Se debe probar el flujo de extremo a extremo con RouterOS 7 y Ubuntu TEST, incluyendo TLS, permisos, DST-NAT, firewall, persistencia tras reiniciar Docker Engine y rutas privadas a ambos lados. El ensayo de WSL2 validó WireGuard dentro de Docker. La recepción desde una WAN y el tránsito por DST-NAT quedan pendientes. [Preparación de Ubuntu TEST](PROVISIONING.md#preparación-futura-para-ubuntu-test).
 - Un puerto ocupado por un proceso que Docker no inventaría se detecta al publicar el puerto. El trabajo requiere reconciliación tras resolver el conflicto y conserva la reserva mientras el estado de infraestructura sea incierto. Las reglas de borde verificadas en memoria no cubren configuraciones específicas de GNS3 ni de hardware.
 - El monitoreo de dispositivos queda fuera de esta fase. Los volúmenes de la prueba aislada se conservaron y sus contenedores de prueba se detuvieron.
+
+## Fase 4.1 · Flujo operativo del CRM
+
+- El alta del abonado permite crear cliente, dirección, sitio y servicio en una transacción. El precio y la moneda se recuperan del plan y se pueden modificar. Los servicios existentes se pueden registrar activos con el permiso correspondiente. Los nuevos o pendientes de definir conservan el estado pendiente.
+- Los códigos comerciales se asignan con contadores separados por empresa y entidad. La migración `0007_crm_workflow` mantiene UUID y códigos anteriores, añade códigos a los registros que carecían de ellos, clasifica sitios y equipos y conserva las relaciones. Cuando el tipo anterior era ambiguo, el sitio recibe el tipo **Otro** en su categoría. Los detalles están en [CRM.md](CRM.md).
+- El listado de sitios usa filtros, orden y paginación del backend. El equipo final pertenece al cliente a través de su sitio y el servicio es opcional. Los equipos de infraestructura conservan el rol topológico y declaran capacidades para que los servicios puedan filtrar routers de acceso activos por modalidad.
+- El usuario verificó WireGuard, ICMP bidireccional y acceso a la red remota con un RB5009 antes de esta fase. Se conserva la parametrización del frontend mediante `WEB_BIND` y se documenta en el archivo de ejemplo. Las variables del entorno y las configuraciones de conectividad permanecen en DEV tal como estaban.
+
+### Evidencia de la fase 4.1
+
+| Comprobación | Resultado |
+|---|---|
+| PostgreSQL 17 temporal | 25 pruebas aprobadas, incluidas las 21 anteriores y las regresiones de conectividad. Se verificaron concurrencia para los cuatro códigos, reversión transaccional, permisos, relaciones cruzadas, filtros, paginación y preservación de datos. Continúa el aviso de deprecación de Starlette/AnyIO. |
+| Frontend | TypeScript y Vite compilaron. Edge comprobó el alta simple e integrada, el precio recuperado y editado, el estado activo inicial, el filtrado de routers, pestañas de sitios, alta de un equipo final y opciones del formulario según permisos. |
+| DEV existente | Se aplicó `0007_crm_workflow (head)`. Las columnas anteriores comparadas coincidieron para un cliente, un sitio y un dispositivo, así como para dos collectors históricos y sus reservas y túneles. El sitio anterior quedó como infraestructura de red de tipo Otro. Los cuatro servicios respondieron saludables. El collector vigente seguía enviando heartbeat y el túnel seguía reportando conexión. |
+
+La prueba física del RB5009 corresponde al usuario y precede a esta fase. Las órdenes de instalación, la asignación de técnicos, el monitoreo automático y la automatización PPPoE/DHCP quedan pendientes.
