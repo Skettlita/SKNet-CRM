@@ -11,6 +11,7 @@ from app.auth.store import execute, row, rows
 from app.connectivity import jobs, schemas
 from app.connectivity.service import collector, configuration, event
 from app.main import lifespan
+from app import network_monitoring
 
 
 def private_app():
@@ -127,6 +128,9 @@ def config(request: Request):
 def heartbeat(request: Request, data: schemas.Heartbeat):
     with database(request) as db, write_operation(db):
         target = authorize(db, request)
+        if target["last_heartbeat_at"] is not None and not target["heartbeat_fresh"] and target["tunnel_id"]:
+            execute(db, "UPDATE connectivity.vpn_tunnels SET monitor_epoch=monitor_epoch+1 WHERE id=:id",
+                    id=target["tunnel_id"])
         execute(db, """
             UPDATE connectivity.collectors SET last_heartbeat_at=now(),applied_revision=:applied WHERE id=:id
         """, id=target["id"], applied=data.revision if data.revision == target["config_revision"] else None)
@@ -146,17 +150,22 @@ def report(request: Request, data: schemas.Probe):
             return {}
         age = datetime.now(timezone.utc).timestamp() - data.handshake
         handshake = datetime.fromtimestamp(data.handshake, timezone.utc) if data.handshake and age >= -5 else None
-        connected = data.ping_ok and data.diagnostic == "OK" and -5 <= age <= 180 and target["heartbeat_fresh"]
+        connected = data.ping_ok and data.diagnostic in {"OK","NO_HANDSHAKE"} and handshake is not None and target["heartbeat_fresh"]
         state = row(db, """
             UPDATE connectivity.vpn_tunnels SET last_handshake_at=greatest(CAST(:handshake AS timestamptz),last_handshake_at),last_probe_at=now(),
               last_success_at=CASE WHEN :ok THEN now() ELSE last_success_at END,
+              monitor_epoch=monitor_epoch+CASE WHEN (NOT :ok AND consecutive_failures=0)
+                OR (:ok AND (consecutive_failures>0 OR last_probe_at IS NULL OR
+                    last_probe_at<now()-make_interval(secs=>:stale))) THEN 1 ELSE 0 END,
               consecutive_failures=CASE WHEN :ok THEN 0 ELSE consecutive_failures+1 END,
               connection_status=CASE WHEN :ok THEN 'CONNECTED'
                 WHEN consecutive_failures>=2 THEN 'DISCONNECTED' ELSE connection_status END
             WHERE id=:id RETURNING connection_status
-        """, id=target["tunnel_id"], ok=connected, handshake=handshake)["connection_status"]
+        """, id=target["tunnel_id"], ok=connected, handshake=handshake, stale=configuration().stale)["connection_status"]
         if state != target["connection_status"]:
             event(db, target, state, data.diagnostic)
+        if connected or state == "DISCONNECTED":
+            network_monitoring.sync_transport(db, target, "VPN", not connected, data.diagnostic)
         execute(db, """
             UPDATE connectivity.collectors SET provisioning_status=:status WHERE id=:id
         """, id=target["id"], status="READY" if state == "CONNECTED" else "WAITING_HANDSHAKE")
@@ -164,7 +173,12 @@ def report(request: Request, data: schemas.Probe):
 
 
 @agent.post(agent_path + "/results")
-def results(request: Request):
-    with database(request) as db:
-        authorize(db, request)
-        raise HTTPException(501, "La recepción de resultados ICMP está reservada.")
+def results(request: Request, data: network_monitoring.Results):
+    with database(request) as db, write_operation(db):
+        return network_monitoring.ingest(db, authorize(db, request), data)
+
+
+@agent.get(agent_path + "/targets")
+def targets(request: Request):
+    with database(request) as db, write_operation(db):
+        return network_monitoring.targets(db, authorize(db, request))

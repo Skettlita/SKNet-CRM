@@ -190,26 +190,36 @@ class Registration(Client):
         return self
 
 
-class Device(Input):
-    name: Name
-    site_id: UUID
+class Placement(Input):
+    site_id: UUID | None = None
     service_id: UUID | None = None
-    device_type: Short
-    device_role: Role
-    brand: Short | None = None
-    model: Short | None = None
-    description: Long | None = None
-    ip_address: Short | None = None
-    serial_number: Short | None = None
-    mac_address: Short | None = None
     client_id: UUID | None = None
-    device_category: DeviceCategory | None = None
-    capabilities: list[Capability] | None = Field(default=None, max_length=4)
+    ip_address: Short | None = None
+    ip_mode: Literal["NONE", "INDEPENDENT", "SERVICE"] | None = None
+    assignment_state: Literal["AVAILABLE", "ASSIGNED", "INSTALLED", "MAINTENANCE"] | None = None
 
     @field_validator("ip_address")
     @classmethod
     def check_ip(cls, value):
         return address(value, ipv4_only=True)
+
+
+class Assignment(Placement):
+    reason: Note
+
+
+class Device(Placement):
+    name: Name
+    device_type: Short
+    device_role: Role
+    brand: Short | None = None
+    model: Short | None = None
+    description: Long | None = None
+    serial_number: Short | None = None
+    mac_address: Short | None = None
+    device_category: DeviceCategory | None = None
+    capabilities: list[Capability] | None = Field(default=None, max_length=4)
+    ownership: Literal["ISP", "CUSTOMER", "THIRD_PARTY", "UNKNOWN"] | None = None
 
     @field_validator("mac_address")
     @classmethod
@@ -229,6 +239,14 @@ class State(Input):
     reason: Note
 
 
+class Reason(Input):
+    reason: Note
+
+
+class Delete(Reason):
+    confirmed: Literal[True]
+
+
 class ServiceState(Input):
     status: ServiceStatus
     reason: Note
@@ -242,7 +260,7 @@ class IcmpProfile(Input):
     packet_count: int = Field(5, ge=1, le=10)
     latency_warning_ms: Decimal = Field(Decimal("200"), gt=0, max_digits=12, decimal_places=3)
     loss_warning_pct: Decimal = Field(Decimal("0"), ge=0, le=99.99, decimal_places=2)
-    loss_failure_pct: Decimal = Field(Decimal("30"), ge=0, le=99.99, decimal_places=2)
+    loss_failure_pct: Decimal = Field(Decimal("40"), gt=0, le=100, decimal_places=2)
     failure_threshold: int = Field(3, ge=1, le=32767)
     recovery_threshold: int = Field(2, ge=1, le=32767)
 

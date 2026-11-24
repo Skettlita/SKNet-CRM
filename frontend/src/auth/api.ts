@@ -16,14 +16,15 @@ export type Account = {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public fields: Record<string, string> = {}) {
     super(message)
   }
 }
 
-export async function api<T>(scope: Scope, path: string, method = "GET", body?: object): Promise<T> {
+export async function api<T>(scope: Scope, path: string, method = "GET", body?: object, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api/v1/${scope}${path}`, {
     method,
+    signal,
     cache: "no-store",
     credentials: "same-origin",
     headers: body ? { "Content-Type": "application/json" } : undefined,
@@ -32,7 +33,10 @@ export async function api<T>(scope: Scope, path: string, method = "GET", body?: 
   if (response.status === 204) return undefined as T
   const data = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new ApiError(response.status, typeof data?.detail === "string" ? data.detail : "No se pudo completar la solicitud.")
+    const detail = data?.detail
+    const summary = typeof detail === "string" ? detail : detail?.message ?? "No se pudo completar la solicitud."
+    const dependencies = Array.isArray(detail?.dependencies) ? " Dependencias: " + detail.dependencies.join(", ") + "." : ""
+    throw new ApiError(response.status, summary + dependencies, data?.fields ?? detail?.fields ?? {})
   }
   return data as T
 }

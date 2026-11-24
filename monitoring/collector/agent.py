@@ -6,12 +6,18 @@ import tempfile
 import time
 
 from rest import ApiError, request
+from scheduler import Scheduler
 
 
 STATE = Path("/state")
 PATH = "/run/sknet-collector/api.sock"
 PREFIX = "/api/v1/collector"
 LOG = logging.getLogger("collector")
+
+
+def api(endpoint, data=None):
+    identity = json.loads((STATE / "identity.json").read_text())
+    return request(PATH, PREFIX, endpoint, data, token=identity["token"])
 
 
 def command(*args, check=True):
@@ -76,12 +82,12 @@ def main():
     config = None
     previous_problem = None
     cache = STATE / "config.json"
+    checks = Scheduler(api, STATE)
+    checks.start()
     while True:
         delay = 10
         try:
             identity = json.loads((STATE / "identity.json").read_text())
-            def api(endpoint, data=None):
-                return request(PATH, PREFIX, endpoint, data, token=identity["token"])
             online = True
             try:
                 config = api("/config")
@@ -106,9 +112,13 @@ def main():
                 LOG.info("WireGuard configurado. Modo: %s.", "simulación" if config["simulated"] else "RouterOS")
             if online:
                 api("/heartbeat", {"revision": installed["revision"]})
-                api("/connectivity", diagnose(config))
+            probe = diagnose(config)
+            checks.visibility(probe["ping_ok"] and bool(probe["handshake"]), config["heartbeat"])
+            if online:
+                api("/connectivity", probe)
             previous_problem = None
         except (OSError, ApiError, ValueError, subprocess.SubprocessError) as exc:
+            checks.visibility(False)
             problem = type(exc).__name__
             if problem != previous_problem:
                 LOG.warning("Collector en espera (%s).", problem)

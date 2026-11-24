@@ -544,6 +544,7 @@ summary { cursor: pointer; }
 .crm-form-section:first-child { border-top: 0; padding-top: 0; }
 .crm-form-section h3, .crm-capabilities legend { font-size: 13px; font-weight: 600; }
 .action-form .crm-capabilities { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.form-field [aria-invalid="true"] { border-color: #dc2626; }
 .relation-control { display: grid; gap: 5px; }
 .crm-table-icon { display: inline-block; margin-right: 5px; vertical-align: text-bottom; }
 .crm-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }

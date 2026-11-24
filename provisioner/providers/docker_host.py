@@ -12,6 +12,7 @@ class DockerHost:
     def __init__(self, client):
         self.client = client
         self.image = os.getenv("SKNET_COLLECTOR_IMAGE", "sknet-collector:dev")
+        self.icmp_workers = str(min(32, max(1, int(os.getenv("SKNET_ICMP_CONCURRENCY", "10")))))
         self.api_volume = os.environ["SKNET_COLLECTOR_API_VOLUME"]
         self.socket_directory = "/run/sknet-collector"
 
@@ -80,6 +81,7 @@ class DockerHost:
             config = api.create_networking_config({network: api.create_endpoint_config(ipv4_address=address)})
             container = self.client.containers.create(
                 self.image, name=name, network=network, networking_config=config,
+                environment={"SKNET_ICMP_CONCURRENCY": self.icmp_workers},
                 labels=self.labels(resource), ports={port: (resource["bind"], resource["port"])},
                 cap_drop=["ALL"], cap_add=["NET_ADMIN", "NET_RAW"],
                 security_opt=["no-new-privileges"], read_only=True,

@@ -117,7 +117,7 @@ def process(resource, host, edge):
             raise
     except docker.errors.APIError as exc:
         description = str(exc.explanation).lower()
-        if "port is already allocated" in description or "address already in use" in description:
+        if any(cause in description for cause in ("port is already allocated", "address already in use", "ports are not available")):
             code = "PORT_CONFLICT"
     except (KeyError, OSError, ValueError, subprocess.SubprocessError):
         pass

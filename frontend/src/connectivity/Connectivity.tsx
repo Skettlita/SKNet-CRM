@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 
 import { PageHeading } from "../auth/AccessManagement"
 import { api } from "../auth/api"
@@ -13,6 +13,7 @@ type Collector = {
   provisioning_status: string; provisioning_step: string; container_state: string; connection_status: string | null
   last_heartbeat_at: string | null; heartbeat_fresh: boolean; last_handshake_at: string | null; last_probe_at: string | null
   diagnostic: string | null; simulated: boolean; job_status: string | null; ticket_id: string | null
+  transport_connected: boolean
   script_available: boolean; simulation_preview: boolean; peer_configured: boolean
   docker_subnet: string | null; docker_ip: string | null; wireguard_subnet: string | null; external_udp_port: number | null
 }
@@ -37,22 +38,20 @@ const labels: Record<string, string> = {
 }
 const label = (value: string | null) => value ? labels[value] ?? value : "—"
 const networks = (fields: FormData) => textValue(fields, "networks").split(/[\s,]+/).filter(Boolean)
-const vpn = (item: Collector) => item.simulated ? "SIMULATED" : item.heartbeat_fresh ? item.connection_status ?? "UNKNOWN" : "STALE"
+const vpn = (item: Collector) => item.transport_connected ? "CONNECTED"
+  : item.last_heartbeat_at && !item.heartbeat_fresh ? "STALE"
+    : item.connection_status === "DISCONNECTED" ? "DISCONNECTED" : "UNKNOWN"
 const ticket = (id: string, base: string, canRead: boolean) => canRead ? <a href={base + "/support/" + id}>{id}</a> : id
 
 export function IspConnectivity({ account }: { account: Account }) {
   const { version, reload } = usePager()
-  const state = useData<Collector | null>("isp", "/connectivity", version)
+  const state = useData<Collector | null>("isp", "/connectivity", version,
+    (item) => item?.job_status === "PENDING" || item?.job_status === "RUNNING" ? 2000 : 5000)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(false)
   const [script, setScript] = useState("")
   const [copyState, setCopyState] = useState("")
   const canWrite = account.permissions.includes("connectivity.write")
-
-  useEffect(() => {
-    const timer = window.setInterval(reload, 5000)
-    return () => window.clearInterval(timer)
-  }, [])
 
   function download() {
     const url = URL.createObjectURL(new Blob([script], { type: "text/plain" }))
@@ -132,9 +131,10 @@ export function IspConnectivity({ account }: { account: Account }) {
 
 export function AdminConnectivity({ account, view }: { account: Account; view: "collectors" | "vpn" | "pools" | "jobs" }) {
   const { offset, setOffset, version, reload } = usePager()
-  const collectors = useData<Page<Collector>>("admin", view === "collectors" || view === "vpn" ? "/connectivity/collectors?offset=" + offset : null, version)
-  const jobs = useData<Page<Job>>("admin", view === "jobs" ? "/connectivity/jobs?offset=" + offset : null, version)
-  const pools = useData<Pools>("admin", view === "pools" ? "/connectivity/pools" : null, version)
+  const collectors = useData<Page<Collector>>("admin", view === "collectors" || view === "vpn" ? "/connectivity/collectors?offset=" + offset : null, version, 5000)
+  const jobs = useData<Page<Job>>("admin", view === "jobs" ? "/connectivity/jobs?offset=" + offset : null, version,
+    (page) => page?.items.some((item) => item.status === "RUNNING" || item.status === "PENDING") ? 2000 : 5000)
+  const pools = useData<Pools>("admin", view === "pools" ? "/connectivity/pools" : null, version, 10000)
   const [action, setAction] = useState<{ id: string; command: string; title: string } | null>(null)
   const titles = { collectors: "Collectors", vpn: "Conectividad VPN", pools: "Recursos de red", jobs: "Trabajos de aprovisionamiento" }
   const canWrite = account.permissions.includes("connectivity.write")

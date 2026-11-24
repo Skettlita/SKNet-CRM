@@ -100,9 +100,9 @@ export const catalogs: Record<Kind, CatalogSpec> = {
   devices: {
     title: "Dispositivos", singular: "dispositivo", permission: "devices", categories: roles, categoryLabel: "Rol en la red",
     columns: [["Código", string("device_code")], ["Categoría", choice("device_category", deviceCategories)],
-      ["IP de gestión", string("ip_address_text")], ["Fabricante", string("brand")], ["Modelo", string("model")],
+      ["IP de gestión", string("effective_ip")], ["Fabricante", string("brand")], ["Modelo", string("model")],
       ["Tipo", string("device_type")], ["Rol", choice("device_role", roles)], ["Sitio", string("site_name")]],
-    fields: [name("Nombre del dispositivo"), field("ip_address", "Dirección IPv4 de gestión"),
+    fields: [name("Nombre del dispositivo"),
       field("brand", "Fabricante"), field("model", "Modelo"), field("device_type", "Tipo de dispositivo", { required: true }),
       field("serial_number", "Número de serie"), field("mac_address", "MAC del dispositivo", { max: 17 }),
       field("device_role", "Rol en la red", { options: roles, required: true }), description],
@@ -110,6 +110,7 @@ export const catalogs: Record<Kind, CatalogSpec> = {
 }
 
 export function administrativeStatus(kind: Kind, row: Entry) {
+  if (row.archived_at) return "ARCHIVED"
   return kind === "devices" ? row.administrative_active && !row.retired_at ? "ACTIVE" : "INACTIVE"
     : kind === "sites" || kind === "internet-plans" ? row.active ? "ACTIVE" : "INACTIVE" : asText(row, "status")
 }

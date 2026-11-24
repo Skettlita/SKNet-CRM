@@ -1,13 +1,17 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { FormEvent, InputHTMLAttributes, ReactNode } from "react"
 
 import { Button } from "../shared/Button"
-import { message } from "./api"
+import { ApiError, message } from "./api"
+import { FormErrors, useFieldError } from "./formErrors"
 
 type FieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string }
 
 export function Field({ label, ...input }: FieldProps) {
-  return <label className="form-field"><span>{label}</span><input {...input} /></label>
+  const { error, id, attrs } = useFieldError(input.name)
+  return <label className="form-field"><span>{label}</span><input {...input} {...attrs} />
+    {error && <span id={id} className="form-error">{error}</span>}
+  </label>
 }
 
 export function PasswordFields() {
@@ -43,24 +47,42 @@ export function ActionForm({ children, submit, label, cancel }: {
 }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
+  const [fields, setFields] = useState<Record<string, string>>({})
+  const form = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    const invalid = form.current?.querySelector<HTMLElement>("[aria-invalid=true]")
+    invalid?.focus({ preventScroll: true })
+    invalid?.scrollIntoView({ block: "nearest" })
+  }, [fields])
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (pending) return
     setError("")
+    setFields({})
     setPending(true)
     try {
       await submit(new FormData(event.currentTarget))
     } catch (error) {
       setError(message(error))
+      if (error instanceof ApiError) {
+        const matched: Record<string, string> = {}
+        const names = new Set(Array.from(form.current?.elements ?? [], (item) => item.getAttribute("name")))
+        for (const [path, detail] of Object.entries(error.fields)) {
+          const key = path.replace(/^site\./, "initial_").replace(/^address\./, "customer_").replace(/^service\./, "")
+          const field = [key, path, key.split(".")[0]].find((candidate) => names.has(candidate))
+          if (field) matched[field] = detail
+        }
+        setFields(matched)
+      }
     } finally {
       setPending(false)
     }
   }
 
-  return <form className="action-form" onSubmit={onSubmit}>
+  return <form ref={form} className="action-form" onSubmit={onSubmit}>
     <fieldset disabled={pending}>
-      {children}
+      <FormErrors.Provider value={fields}>{children}</FormErrors.Provider>
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="form-actions">
         <Button type="submit" variant="primary">{pending ? "Procesando…" : label}</Button>

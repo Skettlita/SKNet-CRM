@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { lazy, Suspense, useState } from "react"
 import { api } from "../auth/api"
 import type { Account } from "../auth/api"
 import { PageHeading } from "../auth/AccessManagement"
@@ -10,6 +10,8 @@ import {
 } from "../platform/shared"
 import type { Page } from "../platform/shared"
 import { RecordEditor, RelatedRecords, StateEditor } from "./Catalog"
+import { AssignmentHistory, assignmentStates, ipModes, ownershipOptions } from "./Assignment"
+import { CreateInstallation } from "./Installations"
 import {
   administrativeStatus, allowed, appPath, asText, capabilities, catalogs, codeFields, crm, deviceCategories,
   installationSituations, optionsLabel, siteCategories, titleOf, valueFor,
@@ -17,6 +19,7 @@ import {
 import type { Entry, Kind } from "./model"
 
 type Child = "contacts" | "addresses" | "notes"
+const MonitoringDetail = lazy(() => import("./Monitoring").then((module) => ({ default: module.MonitoringDetail })))
 type Tab = { id: string; title: string; permission?: string }
 
 const addressTypes = [["BILLING", "Facturación"], ["LEGAL", "Legal"], ["OTHER", "Otra"]] as [string, string][]
@@ -116,7 +119,7 @@ const parameters = [
   ["packet_count", "Paquetes por comprobación", 1, 10, "1"],
   ["latency_warning_ms", "Latencia de aviso (ms)", 0.001, 999999999, "0.001"],
   ["loss_warning_pct", "Pérdida de aviso (%)", 0, 99.99, "0.01"],
-  ["loss_failure_pct", "Tolerancia de pérdida (%)", 0, 99.99, "0.01"],
+  ["loss_failure_pct", "Umbral de fallo por pérdida (%)", 0.01, 100, "0.01"],
   ["failure_threshold", "Fallos consecutivos", 1, 32767, "1"],
   ["recovery_threshold", "Comprobaciones de recuperación", 1, 32767, "1"],
 ] as const
@@ -132,7 +135,7 @@ function Monitoring({ entry, account, complete }: { entry: Entry; account: Accou
   const state = useData<Profile>("isp", endpoint, revision)
   return <>
     <Panel title="Configuración ICMP"><div className="panel-body">
-      <p className="description">Estos valores se guardan para el futuro collector. En esta fase no se ejecutan comprobaciones.</p>
+      <p className="description">El collector ejecuta el perfil cuando el equipo instalado tiene una IPv4 autorizada y transporte disponible.</p>
       <DataView state={state}>{(data) => editing
         ? <ActionForm label="Guardar configuración" cancel={() => setEditing(false)} submit={async (form) => {
           await api("isp", endpoint, "PUT", {
@@ -160,13 +163,7 @@ function Monitoring({ entry, account, complete }: { entry: Entry; account: Accou
           </div>}
         </>}</DataView>
     </div></Panel>
-    <Panel title="Mediciones e históricos"><div className="panel-body">
-      <dl className="profile-details">
-        {["Disponibilidad", "Latencia", "Pérdida de paquetes", "Última comprobación", "Incidentes", "Históricos"].map((label) =>
-          <div className="detail-row" key={label}><dt>{label}</dt><dd>Sin datos</dd></div>)}
-        <dt>SNMP</dt><dd>No disponible</dd>
-      </dl>
-    </div></Panel>
+    {allowed(account, "monitoring.read") && <Suspense fallback={<p role="status">Cargando mediciones…</p>}><MonitoringDetail id={entry.id} /></Suspense>}
   </>
 }
 
@@ -190,6 +187,9 @@ function General({ kind, entry, account }: { kind: Kind; entry: Entry; account: 
     {kind === "sites" && <><dt>Categoría del sitio</dt><dd>{optionsLabel(siteCategories, entry.site_category)}</dd></>}
     {kind === "devices" && <>
       <dt>Categoría funcional</dt><dd>{optionsLabel(deviceCategories, entry.device_category)}</dd>
+      <dt>Situación del equipo</dt><dd>{optionsLabel(assignmentStates, entry.assignment_state)}</dd>
+      <dt>Propiedad</dt><dd>{optionsLabel(ownershipOptions, entry.ownership)}</dd>
+      <dt>IP de gestión</dt><dd>{asText(entry, "effective_ip") || "Sin configurar"} · {optionsLabel(ipModes, entry.ip_mode)}</dd>
       {entry.device_category === "INFRASTRUCTURE" && <>
         <dt>Capacidades técnicas</dt><dd>{Array.isArray(entry.capabilities)
           ? entry.capabilities.map((value) => optionsLabel(capabilities, value)).join(", ") || "—" : "—"}</dd>
@@ -208,8 +208,8 @@ function General({ kind, entry, account }: { kind: Kind; entry: Entry; account: 
 }
 
 export function CrmDetail({ kind, id, account }: { kind: Kind; id: string; account: Account }) {
-  const [tab, setTab] = useState("general")
-  const [form, setForm] = useState<"edit" | "state" | null>(null)
+  const [tab, setTab] = useState(new URLSearchParams(window.location.search).get("tab") ?? "general")
+  const [form, setForm] = useState<"edit" | "state" | "archive" | "delete" | "installation" | null>(null)
   const [revision, setRevision] = useState(0)
   const record = useData<Entry>("isp", `${crm}/${kind}/${id}`, revision)
   const spec = catalogs[kind]
@@ -228,6 +228,7 @@ export function CrmDetail({ kind, id, account }: { kind: Kind; id: string; accou
   )
   if (kind === "services") choices.push({ id: "history", title: "Historial", permission: "crm_history.read" })
   if (kind === "devices") choices.push(
+    { id: "assignments", title: "Asignaciones" },
     { id: "monitoring", title: "Monitoreo", permission: "icmp.read" },
     { id: "history", title: "Historial", permission: "crm_history.read" },
   )
@@ -240,7 +241,7 @@ export function CrmDetail({ kind, id, account }: { kind: Kind; id: string; accou
   return <>
     <a href={appPath(kind)} className="platform-link back-link">Volver a {spec.title.toLowerCase()}</a>
     <DataView state={record}>{(entry) => {
-      const immutable = entry.retired_at || entry.status === "CLOSED"
+      const immutable = entry.archived_at || entry.retired_at || entry.status === "CLOSED"
       const canChangeState = allowed(account, spec.permission + ".status") && !immutable && entry.status !== "CANCELLED"
       return <>
         <PageHeading title={titleOf(kind, entry)} action={<div className="row-actions">
@@ -248,10 +249,28 @@ export function CrmDetail({ kind, id, account }: { kind: Kind; id: string; accou
           {canChangeState && <Button onClick={() => setForm("state")}>
             {kind === "services" ? "Cambiar estado" : administrativeStatus(kind, entry) === "ACTIVE" ? "Desactivar" : "Activar"}
           </Button>}
+          {!entry.archived_at && allowed(account, spec.permission + ".archive") && <Button onClick={() => setForm("archive")}>Archivar</Button>}
+          {allowed(account, spec.permission + ".delete") && <Button onClick={() => setForm("delete")}>Eliminar</Button>}
+          {kind === "services" && entry.status === "PENDING" && !immutable && allowed(account, "installations.create") &&
+            <Button onClick={() => setForm("installation")}>Generar instalación</Button>}
         </div>} />
-        {form && <Panel title={form === "edit" ? "Editar " + spec.singular : "Cambiar estado administrativo"}><div className="panel-body">
+        {form === "installation" && <CreateInstallation account={account} serviceId={id} cancel={() => setForm(null)} />}
+        {form && form !== "installation" && <Panel title={form === "edit" ? "Editar " + spec.singular : form === "archive" ? "Archivar registro" :
+          form === "delete" ? "Eliminar definitivamente" : "Cambiar estado administrativo"}><div className="panel-body">
           {form === "edit" ? <RecordEditor kind={kind} entry={entry} account={account} complete={saved} cancel={() => setForm(null)} />
-            : <StateEditor kind={kind} entry={entry} complete={saved} cancel={() => setForm(null)} />}
+            : form === "state" ? <StateEditor kind={kind} entry={entry} complete={saved} cancel={() => setForm(null)} />
+            : <ActionForm label={form === "archive" ? "Confirmar archivo" : "Confirmar eliminación"} cancel={() => setForm(null)}
+              submit={async (fields) => {
+                const deleting = form === "delete"
+                await api("isp", `${crm}/${kind}/${id}${deleting ? "" : "/archive"}`, deleting ? "DELETE" : "POST", {
+                  reason: textValue(fields, "reason"), ...(deleting ? { confirmed: fields.has("confirmed") } : {}),
+                })
+                if (deleting) window.location.assign(appPath(kind))
+                else saved()
+              }}>
+              <Field label="Motivo" name="reason" minLength={2} maxLength={500} required />
+              {form === "delete" && <label className="checkbox-label"><input type="checkbox" name="confirmed" required /> Confirmo eliminar definitivamente este registro.</label>}
+            </ActionForm>}
         </div></Panel>}
         <div className="crm-tabs" aria-label="Secciones del detalle">
           {visible.map((item) => <button key={item.id} type="button" aria-pressed={current === item.id}
@@ -263,8 +282,9 @@ export function CrmDetail({ kind, id, account }: { kind: Kind; id: string; accou
           {allowed(account, "crm_history.read") && <History id={id} kind="clients" />}</>}
         {current === "history" && (kind === "services" || kind === "devices") && <History kind={kind} id={id} />}
         {(current === "services" || current === "sites" || current === "devices") &&
-          <RelatedRecords key={current} kind={current} filter={relationFilter} account={account} />}
+          <RelatedRecords key={current} kind={current} filter={relationFilter} account={account} parent={entry} />}
         {current === "monitoring" && <Monitoring entry={entry} account={account} complete={refresh} />}
+        {current === "assignments" && <AssignmentHistory id={id} />}
         {current === "future" && <Panel title="Próximos módulos"><div className="panel-body">
           <p>Contratos, tickets de abonados, órdenes de trabajo, documentos, estado de cuenta, pagos e incidentes de monitoreo se incorporarán en fases posteriores.</p>
         </div></Panel>}

@@ -1,4 +1,7 @@
 from contextlib import asynccontextmanager
+import asyncio
+import logging
+import os
 from typing import Literal
 
 from fastapi import FastAPI, Request, Response
@@ -11,8 +14,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.auth.routes import admin, isp
 from app.connectivity.routes import admin as connectivity_admin, isp as connectivity_isp
 from app.crm.routes import router as crm_router
+from app.crm.installations import router as installation_router
 from app.platform.routes import admin as platform_admin, isp as platform_isp
 from app.db import create_database_engine, create_session_factory
+from app.validation import fields_for
+from app.monitoring_routes import router as monitoring_router
+from app import network_monitoring
+from app.auth.store import access_lock
 
 
 class Health(BaseModel):
@@ -23,20 +31,44 @@ class Health(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     engine = create_database_engine()
+    sessions = create_session_factory(engine)
+    task = None
+    if getattr(app.state, "monitoring_maintenance", False) and os.getenv("SKNET_CONNECTIVITY_MODE", "disabled") != "disabled":
+        task = asyncio.create_task(maintenance(sessions))
     try:
-        yield {"database": create_session_factory(engine)}
+        yield {"database": sessions}
     finally:
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         engine.dispose()
 
 
+async def maintenance(sessions):
+    def refresh(retain):
+        with sessions() as db:
+            access_lock(db)
+            network_monitoring.sweep(db, retain=retain)
+            db.commit()
+    while True:
+        await asyncio.sleep(15)
+        try:
+            await asyncio.to_thread(refresh, True)
+        except (SQLAlchemyError, ValueError):
+            logging.getLogger("sknet.monitoring").warning("Mantenimiento ICMP temporalmente no disponible.")
+
+
 app = FastAPI(title="SKNet API", version="0.4.0", lifespan=lifespan)
+app.state.monitoring_maintenance = True
 app.include_router(isp)
 app.include_router(admin)
 app.include_router(platform_admin)
 app.include_router(platform_isp)
 app.include_router(crm_router)
+app.include_router(installation_router)
 app.include_router(connectivity_admin)
 app.include_router(connectivity_isp)
+app.include_router(monitoring_router)
 
 
 @app.middleware("http")
@@ -70,7 +102,8 @@ def invalid_input(request: Request, error: RequestValidationError):
         }
         labels = [fields[item["loc"][-1]] for item in errors if item["loc"] and item["loc"][-1] in fields]
         message = "Revisa estos campos: " + ", ".join(dict.fromkeys(labels)) + "." if labels else "Revisa los datos ingresados."
-    return JSONResponse(status_code=422, content={"detail": message})
+    field_errors, general = fields_for(errors)
+    return JSONResponse(status_code=422, content={"detail": general[0] if general else message, "fields": field_errors})
 
 
 @app.get("/api/v1/health", response_model=Health, responses={503: {"model": Health}})

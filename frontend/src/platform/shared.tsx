@@ -1,24 +1,44 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react"
 
 import { api, message } from "../auth/api"
 import type { Scope } from "../auth/api"
+import { useFieldError } from "../auth/formErrors"
 import { Button } from "../shared/Button"
 
 export type Page<T> = { items: T[]; has_more: boolean }
 export const PAGE_SIZE = 25
 
-export function useData<T>(scope: Scope, path: string | null, version = 0) {
-  const [state, setState] = useState<{ data?: T; error?: string; path?: string | null }>({})
+export function useData<T>(scope: Scope, path: string | null, version = 0, poll: number | ((data?: T) => number) = 0) {
+  const [state, setState] = useState<{ data?: T; error?: string; warning?: string; path?: string | null }>({})
+  const fresh = useRef(poll)
+  fresh.current = poll
   useEffect(() => {
     if (!path) return
-    let current = true
-    api<T>(scope, path).then((data) => {
-      if (current) setState({ path, data })
-    }).catch((error) => {
-      if (current) setState({ path, error: message(error) })
-    })
-    return () => { current = false }
+    const controller = new AbortController()
+    let timer: number | undefined
+    let latest: T | undefined
+    async function load() {
+      if (!path) return
+      let failed = false
+      try {
+        latest = await api<T>(scope, path, "GET", undefined, controller.signal)
+        if (!controller.signal.aborted) setState({ path, data: latest })
+      } catch (error) {
+        if (controller.signal.aborted) return
+        failed = true
+        setState((previous) => previous.path === path && previous.data !== undefined && fresh.current
+          ? { ...previous, error: undefined, warning: message(error) } : { path, error: message(error) })
+      }
+      if (controller.signal.aborted) return
+      const delay = typeof fresh.current === "function" ? fresh.current(latest) : fresh.current
+      if (delay > 0) timer = window.setTimeout(load, failed ? Math.max(delay, 5000) : delay)
+    }
+    void load()
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
   }, [scope, path, version])
   return state.path === path ? state : {}
 }
@@ -43,11 +63,12 @@ export function Panel({ title, children }: { title?: string; children: ReactNode
 }
 
 export function DataView<T>({ state, children }: {
-  state: { data?: T; error?: string }; children: (data: T) => ReactNode
+  state: { data?: T; error?: string; warning?: string }; children: (data: T) => ReactNode
 }) {
   if (state.error) return <p className="panel-message form-error" role="alert">{state.error}</p>
   if (state.data === undefined) return <p className="panel-message" role="status">Cargando…</p>
-  return children(state.data)
+  return <>{state.warning && <p className="panel-message" role="status">Última actualización pendiente. {state.warning}</p>}
+    {children(state.data)}</>
 }
 
 export function DataTable({ headers, children, empty }: {
@@ -74,13 +95,19 @@ export function Pagination({ offset, more, onChange }: {
 
 type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & { label: string }
 export function Select({ label, children, ...props }: SelectProps) {
-  return <label className="form-field"><span>{label}</span><select {...props}>{children}</select></label>
+  const { error, id, attrs } = useFieldError(props.name)
+  return <label className="form-field"><span>{label}</span><select {...props} {...attrs}>{children}</select>
+    {error && <span className="form-error" id={id}>{error}</span>}
+  </label>
 }
 
 export function TextArea({ label, ...props }: {
   label: string; name: string; defaultValue?: string; required?: boolean; minLength?: number; maxLength?: number
 }) {
-  return <label className="form-field"><span>{label}</span><textarea rows={3} {...props} /></label>
+  const { error, id, attrs } = useFieldError(props.name)
+  return <label className="form-field"><span>{label}</span><textarea rows={3} {...props} {...attrs} />
+    {error && <span className="form-error" id={id}>{error}</span>}
+  </label>
 }
 
 export function Search({ label, ...input }: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
@@ -88,6 +115,8 @@ export function Search({ label, ...input }: { label: string } & InputHTMLAttribu
 }
 
 const statusNames: Record<string, string> = {
+  ARCHIVED: "Archivado",
+  UP: "Disponible", DEGRADED: "Degradado", DOWN: "Caído", UNREACHABLE: "Inalcanzable",
   ACTIVE: "Activa", INACTIVE: "Suspendida", CLOSED: "Cerrada", TRIAL: "Prueba", GRACE: "En gracia",
   PENDING: "Pendiente", SUSPENDED: "Suspendida", CANCELLED: "Cancelada", UNCONFIGURED: "Sin configurar", UNKNOWN: "Sin datos",
   CONNECTED: "Conectada", DISCONNECTED: "Desconectada", STALE: "Sin datos recientes",
@@ -102,9 +131,9 @@ const statusNames: Record<string, string> = {
 export const statusName = (value: string) => statusNames[value] ?? value
 
 export function Status({ value }: { value: string }) {
-  const tone = ["ACTIVE", "CONNECTED", "ENABLED", "RESOLVED", "RUNNING", "READY", "SUCCEEDED"].includes(value) ? "up"
-    : ["INACTIVE", "SUSPENDED", "DISCONNECTED", "CRITICAL", "ERROR", "FAILED"].includes(value) ? "down"
-    : ["TRIAL", "GRACE", "STALE", "HIGH", "SIMULATED"].includes(value) ? "warn" : "muted"
+  const tone = ["ACTIVE", "CONNECTED", "ENABLED", "RESOLVED", "RUNNING", "READY", "SUCCEEDED", "UP"].includes(value) ? "up"
+    : ["INACTIVE", "SUSPENDED", "DISCONNECTED", "CRITICAL", "ERROR", "FAILED", "DOWN"].includes(value) ? "down"
+    : ["TRIAL", "GRACE", "STALE", "HIGH", "SIMULATED", "DEGRADED", "UNREACHABLE"].includes(value) ? "warn" : "muted"
   return <span className={`status status-${tone}`}><i aria-hidden="true" />{statusName(value)}</span>
 }
 

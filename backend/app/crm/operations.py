@@ -1,4 +1,6 @@
 from datetime import datetime, UTC
+from ipaddress import ip_address
+import json
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
@@ -6,6 +8,7 @@ from fastapi import HTTPException
 from app.auth.store import execute, row, rows
 from app.crm import schemas, store
 from app.crm.classification import ACCESS_CAPABILITY
+from app.validation import problem
 
 
 MONITORING_QUOTA = """
@@ -21,6 +24,8 @@ SERVICE_TRANSITIONS = {
 
 def save(db, actor, resource, fields, record_id=None, *, installation="UNDEFINED"):
     previous = store.owned(db, resource.table, actor.company, record_id) if record_id else None
+    if previous and previous["archived_at"]:
+        raise HTTPException(409, "El registro archivado está disponible para consulta.")
     data = fields.model_dump()
     entity = resource.entity
     client = data.get("client_id")
@@ -50,9 +55,15 @@ def save(db, actor, resource, fields, record_id=None, *, installation="UNDEFINED
             service_history(db, actor, record_id, None, data.get("status", "PENDING"), notes.get(installation))
     else:
         store.update(db, resource.table, actor.company, record_id, data)
+        if resource is store.SERVICES and "service_ip_observed_at" in data:
+            revise_service_targets(db, actor.company, record_id, fields.service_ip)
     before = {key: previous[key] for key in data} if previous else None
-    if before is not None and resource is store.DEVICES:
-        before["client_id"] = store.owned(db, "sites", actor.company, previous["site_id"])["client_id"]
+    if resource is store.DEVICES:
+        assignment_history(db, actor, record_id, previous, data)
+        if "config_revision" in data:
+            close_monitoring_incident(db, actor.company, record_id, "CONFIG_CHANGED")
+        if before is not None and previous["site_id"]:
+            before["client_id"] = store.owned(db, "sites", actor.company, previous["site_id"])["client_id"]
     store.change_event(db, actor, entity, record_id, "update" if previous else "create",
                        before, data, client=client)
     return store.details(db, resource, actor.company, record_id)
@@ -64,6 +75,8 @@ def register_customer(db, actor, fields):
         actor.require("services.create")
         if fields.installation_situation == "EXISTING":
             actor.require("services.status")
+        elif fields.installation_situation == "NEW":
+            actor.require("installations.create")
     profile = schemas.Client.model_validate(fields.model_dump(exclude={"address", "service", "site", "installation_situation"}))
     client = save(db, actor, store.CLIENTS, profile)
     address_id = None
@@ -71,7 +84,7 @@ def register_customer(db, actor, fields):
         address = fields.address.model_dump()
         address_id = store.insert(db, store.ADDRESSES, actor.company, {**address, "client_id": client["id"]})
         store.change_event(db, actor, "address", address_id, "create", after=address, client=client["id"])
-    site, service = None, None
+    site, service, installation = None, None, None
     if fields.site:
         site_fields = schemas.Site(
             **fields.site.model_dump(exclude={"use_client_address"}), client_id=client["id"],
@@ -80,12 +93,18 @@ def register_customer(db, actor, fields):
         site = save(db, actor, store.SITES, site_fields)
         service_fields = schemas.Service(**fields.service.model_dump(), client_id=client["id"], site_id=site["id"])
         service = save(db, actor, store.SERVICES, service_fields, installation=fields.installation_situation)
-    return {"client": client, "site": site, "service": service}
+        if fields.installation_situation == "NEW":
+            from app.crm.installations import create_order
+
+            installation = create_order(db, actor, service["id"], reason="Alta integrada de abonado")
+    return {"client": client, "site": site, "service": service, "installation": installation}
 
 
 def validate_site(db, actor, fields, data, previous):
     if fields.client_id:
-        store.owned(db, "clients", actor.company, fields.client_id)
+        linked = store.owned(db, "clients", actor.company, fields.client_id)
+        if linked["archived_at"] and (not previous or previous["client_id"] != fields.client_id):
+            raise problem("client_id", "Selecciona un cliente sin archivar.", 409)
     if previous and fields.client_id != previous["client_id"]:
         used = row(db, """
             SELECT id FROM crm.services WHERE company_id=:company AND site_id=:site
@@ -112,17 +131,17 @@ def validate_service(db, actor, fields, data, previous):
     site = store.owned(db, "sites", actor.company, fields.site_id)
     plan = store.owned(db, "service_plans", actor.company, fields.plan_id)
     if site["client_id"] != fields.client_id:
-        raise HTTPException(422, "El sitio debe pertenecer al cliente del servicio.")
+        raise problem("site_id", "El sitio debe pertenecer al cliente del servicio.")
     for key, entry in (("client_id", customer), ("site_id", site), ("plan_id", plan)):
         if (not previous or previous[key] != data[key]) and (
-            entry["status"] != "ACTIVE" if key == "client_id" else not entry["active"]
+            entry["archived_at"] or (entry["status"] != "ACTIVE" if key == "client_id" else not entry["active"])
         ):
-            raise HTTPException(409, "Selecciona un cliente, sitio y plan habilitados para la nueva asociación.")
+            raise problem(key, "Selecciona un registro habilitado para la nueva asociación.", 409)
     if fields.access_router_id:
         router = store.owned(db, "devices", actor.company, fields.access_router_id)
         if not previous or previous["access_router_id"] != fields.access_router_id or previous["access_method"] != fields.access_method:
             router_site = store.owned(db, "sites", actor.company, router["site_id"])
-            if router["retired_at"] or not router["administrative_active"] or not router_site["active"]:
+            if router["retired_at"] or not router["administrative_active"] or not router_site["active"] or router_site["archived_at"]:
                 raise HTTPException(409, "El router de acceso debe estar habilitado y en un sitio activo.")
             if (router["device_category"] != "INFRASTRUCTURE"
                     or ACCESS_CAPABILITY[fields.access_method] not in router["capabilities"]):
@@ -145,78 +164,166 @@ def validate_service(db, actor, fields, data, previous):
         data["service_ip_observed_at"] = datetime.now(UTC) if fields.service_ip else None
 
 
-def validate_device(db, actor, fields, data, previous):
-    site = store.owned(db, "sites", actor.company, fields.site_id)
-    category = "CUSTOMER_EQUIPMENT" if site["site_category"] == "CUSTOMER" else "INFRASTRUCTURE"
-    if fields.device_category is not None and fields.device_category != category:
-        raise HTTPException(422, "La categoría del dispositivo debe coincidir con la del sitio.")
+PLACEMENT_KEYS = ("site_id", "service_id", "ip_mode", "ip_address", "assignment_state")
+
+
+def assignment_history(db, actor, record_id, before, after, reason=None):
+    old = {key: before[key] for key in PLACEMENT_KEYS} if before else None
+    current = {key: after[key] for key in PLACEMENT_KEYS}
+    if (old is None and current["assignment_state"] == "AVAILABLE") or (
+        old is not None and all(str(old[key]) == str(current[key]) for key in PLACEMENT_KEYS)
+    ):
+        return
+    execute(db, """
+        INSERT INTO crm.device_assignments(company_id,device_id,actor_id,previous_data,current_data,reason)
+        VALUES (:company,:id,:actor,CAST(:old AS jsonb),CAST(:current AS jsonb),:reason)
+    """, company=actor.company, id=record_id, actor=actor.user["person_id"],
+        old=json.dumps(old, default=str) if old else None, current=json.dumps(current, default=str), reason=reason)
+
+
+def assign_device(db, actor, record_id, fields):
+    previous = store.owned(db, "devices", actor.company, record_id)
+    if previous["retired_at"] or previous["archived_at"]:
+        raise HTTPException(409, "El dispositivo retirado está disponible para consulta.")
+    data = fields.model_dump(exclude={"reason"})
+    if not fields.site_id:
+        ensure_access_router(db, actor.company, previous, previous["device_category"], previous["capabilities"], None)
+    client = validate_placement(db, actor, fields, data, previous["device_category"], previous)
+    store.update(db, "devices", actor.company, record_id, data)
+    assignment_history(db, actor, record_id, previous, data, fields.reason)
+    if "config_revision" in data:
+        close_monitoring_incident(db, actor.company, record_id, "CONFIG_CHANGED")
+    store.change_event(db, actor, "device", record_id, "assignment",
+                       {key: previous[key] for key in PLACEMENT_KEYS}, data, client=client, reason=fields.reason)
+    return store.details(db, store.DEVICES, actor.company, record_id)
+
+
+def validate_placement(db, actor, fields, data, category, previous):
+    site = store.owned(db, "sites", actor.company, fields.site_id) if fields.site_id else None
+    service = store.owned(db, "services", actor.company, fields.service_id) if fields.service_id else None
+    client = site["client_id"] if site else None
     if fields.client_id is not None:
         store.owned(db, "clients", actor.company, fields.client_id)
-        if fields.client_id != site["client_id"]:
-            raise HTTPException(422, "El sitio debe pertenecer al cliente del dispositivo.")
-    data.pop("client_id")
-    data["device_category"] = category
+        if fields.client_id != client:
+            raise problem("site_id", "El sitio debe pertenecer al cliente del dispositivo.")
+    data.pop("client_id", None)
+    if site and (site["site_category"] == "CUSTOMER") != (category == "CUSTOMER_EQUIPMENT"):
+        raise problem("site_id", "La categoría del dispositivo debe coincidir con la del sitio.")
+    if site and (not previous or previous["site_id"] != site["id"]):
+        if not site["active"] or site["archived_at"]:
+            raise problem("site_id", "Selecciona un sitio habilitado.", 409)
+        if client and store.owned(db, "clients", actor.company, client)["archived_at"]:
+            raise problem("site_id", "Este sitio pertenece a un cliente archivado.", 409)
+    if service:
+        if category != "CUSTOMER_EQUIPMENT" or service["site_id"] != fields.site_id or service["client_id"] != client:
+            raise problem("service_id", "El equipo final, el cliente, el sitio y el servicio deben coincidir.")
+        if (not previous or previous["service_id"] != service["id"]) and (service["status"] == "CANCELLED" or service["archived_at"]):
+            raise problem("service_id", "Selecciona un servicio vigente.", 409)
+    if fields.assignment_state:
+        state = fields.assignment_state
+    elif previous and fields.site_id == previous["site_id"]:
+        state = previous["assignment_state"]
+    else:
+        state = ("ASSIGNED" if previous else "INSTALLED") if site else "AVAILABLE"
+    if (state == "AVAILABLE" and (site or service)) or (state in {"ASSIGNED", "INSTALLED"} and not site):
+        raise problem("assignment_state", "El estado debe corresponder con la ubicación asignada.")
+    mode = fields.ip_mode or ("INDEPENDENT" if fields.ip_address else "NONE")
+    if mode == "SERVICE" and not service:
+        raise problem("ip_mode", "Para heredar la IP selecciona un servicio asociado.")
+    if (mode == "INDEPENDENT") != bool(fields.ip_address):
+        raise problem("ip_address", "Introduce una IPv4 solo para el modo de IP independiente.")
+    effective = str(fields.ip_address) if mode == "INDEPENDENT" else (
+        str(service["service_ip"]) if mode == "SERVICE" and service["service_ip"]
+        and ip_address(service["service_ip"]).version == 4 and service["status"] != "CANCELLED" and not service["archived_at"] else None
+    )
+    data.update(assignment_state=state, ip_mode=mode)
+    if state == "INSTALLED" and (not previous or previous["assignment_state"] != "INSTALLED" or previous["site_id"] != fields.site_id):
+        data["installed_at"] = datetime.now(UTC)
+    if previous and any(str(previous[key]) != str(data[key]) for key in PLACEMENT_KEYS):
+        if not site or state in {"AVAILABLE","MAINTENANCE"}:
+            data["monitoring_enabled"] = False
+        if previous["monitoring_requested"] or previous["monitoring_enabled"]:
+            check_ip_conflict(db, actor.company, previous, effective, True)
+        data.update(config_revision=previous["config_revision"] + 1, monitoring_enabled=False)
+    return client
+
+
+def validate_device(db, actor, fields, data, previous):
+    site = store.owned(db, "sites", actor.company, fields.site_id) if fields.site_id else None
+    category = fields.device_category or (
+        ("CUSTOMER_EQUIPMENT" if site["client_id"] else "INFRASTRUCTURE") if site
+        else previous["device_category"] if previous else None
+    )
+    if not category:
+        raise problem("device_category", "Selecciona la categoría del equipo.")
     capabilities = fields.capabilities
     if capabilities is None:
         capabilities = previous["capabilities"] if previous and category == "INFRASTRUCTURE" else []
     if category == "CUSTOMER_EQUIPMENT" and capabilities:
-        raise HTTPException(422, "Las capacidades de red se asignan a equipos de infraestructura.")
-    data["capabilities"] = sorted(capabilities)
-    if (not previous or previous["site_id"] != fields.site_id) and not site["active"]:
-        raise HTTPException(409, "Selecciona un sitio habilitado.")
-    if fields.service_id:
-        service = store.owned(db, "services", actor.company, fields.service_id)
-        if category != "CUSTOMER_EQUIPMENT" or service["site_id"] != fields.site_id or service["client_id"] != site["client_id"]:
-            raise HTTPException(422, "El equipo final, el cliente, el sitio y el servicio deben coincidir.")
-        if (not previous or previous["service_id"] != fields.service_id) and service["status"] == "CANCELLED":
-            raise HTTPException(409, "Selecciona un servicio que no esté cancelado.")
+        raise problem("capabilities", "Las capacidades de red se asignan a equipos de infraestructura.")
+    data.update(device_category=category, capabilities=sorted(capabilities),
+                ownership=fields.ownership or (previous["ownership"] if previous else "UNKNOWN"))
     if previous:
         for optional_field in ("serial_number", "mac_address"):
             if optional_field not in fields.model_fields_set:
                 data.pop(optional_field)
-        if previous["device_category"] != category or set(previous["capabilities"]) - set(capabilities):
-            references = rows(db, """
-                SELECT DISTINCT access_method FROM crm.services
-                WHERE company_id=:company AND access_router_id=:id AND status<>'CANCELLED'
-            """, company=actor.company, id=previous["id"])
-            if any(category != "INFRASTRUCTURE" or (
-                ACCESS_CAPABILITY[item["access_method"]] in previous["capabilities"]
-                and ACCESS_CAPABILITY[item["access_method"]] not in capabilities
-            ) for item in references):
-                raise HTTPException(409, "El equipo proporciona acceso a servicios vigentes. Conserva las capacidades en uso.")
-        if previous["retired_at"]:
-            raise HTTPException(409, "El dispositivo retirado solo está disponible para consulta.")
-        ip_changed = (str(previous["ip_address"]) if previous["ip_address"] else None) != fields.ip_address
-        if ip_changed:
-            wants_monitoring = previous["monitoring_requested"] or previous["monitoring_enabled"]
-            if wants_monitoring and fields.ip_address is None:
-                raise HTTPException(409, "Deshabilita la intención de monitoreo antes de retirar la IP.")
-            if previous["collector_id"] or wants_monitoring:
-                check_ip_conflict(db, actor.company, previous, fields.ip_address, wants_monitoring)
-        if ip_changed or any(previous[key] != data[key] for key in ("site_id", "service_id")):
-            data["config_revision"] = previous["config_revision"] + 1
-    return site["client_id"]
+        if previous["device_category"] != category or not site or set(previous["capabilities"]) - set(capabilities):
+            ensure_access_router(db, actor.company, previous, category, capabilities, site)
+    return validate_placement(db, actor, fields, data, category, previous)
+
+
+def ensure_access_router(db, company, previous, category, capabilities, site):
+    references = rows(db, """
+        SELECT DISTINCT access_method FROM crm.services WHERE company_id=:company AND access_router_id=:id
+          AND status<>'CANCELLED' AND archived_at IS NULL
+    """, company=company, id=previous["id"])
+    if any(category != "INFRASTRUCTURE" or not site or (
+        ACCESS_CAPABILITY[item["access_method"]] in previous["capabilities"]
+        and ACCESS_CAPABILITY[item["access_method"]] not in capabilities
+    ) for item in references):
+        raise HTTPException(409, "El equipo proporciona acceso a servicios vigentes. Conserva su asignación y capacidades.")
 
 
 def check_ip_conflict(db, company, device, address, requested):
     if address is None:
         return
     conflict = row(db, """
-        SELECT id FROM crm.devices WHERE company_id=:company AND id<>:id
-          AND ip_address=CAST(:address AS inet) AND retired_at IS NULL AND (
-            (CAST(:collector AS uuid) IS NOT NULL AND collector_id=:collector)
-            OR (:requested AND (
-                (collector_id IS NULL AND monitoring_requested AND administrative_active)
-                OR (CAST(:collector AS uuid) IS NULL AND collector_id IS NOT NULL)
-            ))
-          ) LIMIT 1
-    """, company=company, id=device["id"], address=address, collector=device["collector_id"], requested=requested)
+        SELECT id FROM crm.device_targets WHERE company_id=:company AND id<>:id
+          AND effective_ip=CAST(:address AS inet) AND retired_at IS NULL AND archived_at IS NULL
+          AND administrative_active AND (monitoring_enabled OR monitoring_requested) LIMIT 1
+    """, company=company, id=device["id"], address=address)
     if conflict:
         raise HTTPException(409, "La IP de gestión ya está reservada en este ámbito de monitoreo.")
 
 
+def revise_service_targets(db, company, service_id, value):
+    devices = rows(db, """
+        SELECT id,monitoring_requested,monitoring_enabled FROM crm.devices
+        WHERE company_id=:company AND service_id=:service AND ip_mode='SERVICE' AND retired_at IS NULL
+    """, company=company, service=service_id)
+    if value and ip_address(value).version == 4:
+        for device in devices:
+            if device["monitoring_requested"] or device["monitoring_enabled"]:
+                check_ip_conflict(db, company, device, value, True)
+    for device in devices:
+        close_monitoring_incident(db, company, device["id"], "CONFIG_CHANGED")
+    execute(db, """
+        UPDATE crm.devices SET config_revision=config_revision+1,monitoring_enabled=false
+        WHERE company_id=:company AND service_id=:service AND ip_mode='SERVICE' AND retired_at IS NULL
+    """, company=company, service=service_id)
+
+
+def close_monitoring_incident(db, company, device_id, reason):
+    execute(db, """
+        UPDATE monitoring.incidents SET ended_at=greatest(now(),started_at),end_reason=:reason
+        WHERE company_id=:company AND device_id=:id AND ended_at IS NULL
+    """, company=company, id=device_id, reason=reason)
+
+
 def set_active(db, actor, resource, record_id, fields):
     previous = store.owned(db, resource.table, actor.company, record_id)
+    if previous["archived_at"]:
+        raise HTTPException(409, "El registro archivado está disponible para consulta.")
     if resource is store.CLIENTS:
         if previous["status"] == "CLOSED":
             raise HTTPException(409, "Un cliente cerrado solo está disponible para consulta.")
@@ -237,8 +344,10 @@ def set_active(db, actor, resource, record_id, fields):
         changed = {"active": fields.active}
     if any(previous[key] != value for key, value in changed.items()):
         store.update(db, resource.table, actor.company, record_id, changed)
+        if resource is store.DEVICES and not fields.active:
+            close_monitoring_incident(db, actor.company, record_id, "DISABLED")
         client = previous.get("client_id")
-        if resource is store.DEVICES:
+        if resource is store.DEVICES and previous["site_id"]:
             client = store.owned(db, "sites", actor.company, previous["site_id"])["client_id"]
         store.change_event(db, actor, resource.entity, record_id, "status",
                            {key: previous[key] for key in changed}, changed, client=client, reason=fields.reason)
@@ -254,6 +363,8 @@ def service_history(db, actor, service_id, previous, status, reason):
 
 def service_status(db, actor, record_id, fields):
     previous = store.owned(db, "services", actor.company, record_id)
+    if previous["archived_at"]:
+        raise HTTPException(409, "El servicio archivado está disponible para consulta.")
     before, after = previous["status"], fields.status
     if after == before:
         return store.details(db, store.SERVICES, actor.company, record_id)
@@ -270,6 +381,8 @@ def service_status(db, actor, record_id, fields):
     if after == "CANCELLED":
         updates["cancelled_at"] = datetime.now(UTC)
     store.update(db, "services", actor.company, record_id, updates)
+    if after == "CANCELLED":
+        revise_service_targets(db, actor.company, record_id, None)
     service_history(db, actor, record_id, before, after, fields.reason)
     store.change_event(db, actor, "service", record_id, "status",
                        {key: previous[key] for key in updates}, updates, client=previous["client_id"], reason=fields.reason)
@@ -306,9 +419,11 @@ def profile(db, company, device_id):
 
 def validate_monitoring_request(db, actor, device):
     actor.require("icmp.write")
-    if device["ip_address"] is None:
-        raise HTTPException(422, "Registra una IP de gestión IPv4 antes de habilitar la configuración.")
-    check_ip_conflict(db, actor.company, device, str(device["ip_address"]), True)
+    target = row(db, "SELECT effective_ip FROM crm.device_targets WHERE company_id=:company AND id=:id",
+                 company=actor.company, id=device["id"])
+    if target["effective_ip"] is None or device["assignment_state"] != "INSTALLED":
+        raise problem("requested", "Instala el equipo y configura una IPv4 de gestión antes de solicitar monitoreo.")
+    check_ip_conflict(db, actor.company, device, str(target["effective_ip"]), True)
     store.enforce_limit(db, actor, "max_devices", "devices", MONITORING_QUOTA)
 
 
@@ -324,8 +439,8 @@ def save_profile(db, actor, device_id, fields):
         raise HTTPException(409, "El dispositivo está retirado.")
     validate_interval(actor, fields.interval_seconds)
     was_requested = device["monitoring_requested"] or device["monitoring_enabled"]
-    if fields.requested and (device["ip_address"] is None or not device["administrative_active"]):
-        raise HTTPException(422, "El dispositivo debe estar habilitado y tener IP de gestión.")
+    if fields.requested and not device["administrative_active"]:
+        raise problem("requested", "El dispositivo debe estar habilitado.")
     if fields.requested and not was_requested:
         validate_monitoring_request(db, actor, device)
     before = profile(db, actor.company, device_id)
@@ -346,7 +461,8 @@ def save_profile(db, actor, device_id, fields):
         "monitoring_enabled": device["monitoring_enabled"] and fields.requested,
         "config_revision": device["config_revision"] + 1,
     })
+    close_monitoring_incident(db, actor.company, device_id, "CONFIG_CHANGED" if fields.requested else "DISABLED")
     after = profile(db, actor.company, device_id)
-    site = store.owned(db, "sites", actor.company, device["site_id"])
-    store.change_event(db, actor, "device", device_id, "icmp", before, after, client=site["client_id"])
+    site = store.owned(db, "sites", actor.company, device["site_id"]) if device["site_id"] else None
+    store.change_event(db, actor, "device", device_id, "icmp", before, after, client=site["client_id"] if site else None)
     return after

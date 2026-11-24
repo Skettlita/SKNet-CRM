@@ -4,9 +4,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.auth.store import ISP, execute, row, rows
-from app.crm import operations, schemas, store
+from app.crm import lifecycle, operations, schemas, store
 from app.crm.classification import AccessMethod, DeviceCategory
 from app.platform.routes import read, write
+from app import monitoring_routes
+from app.connectivity.config import stale_seconds
 
 
 router = APIRouter(prefix=ISP.path + "/crm", tags=["CRM empresarial"])
@@ -21,13 +23,14 @@ def resource_routes(path, permission, resource, input_model):
                      client_id: UUID | None = None, site_id: UUID | None = None,
                      site_type: str | None = None, device_category: DeviceCategory | None = None,
                      isp_site: bool = False, eligible_for: AccessMethod | None = None, linkable_service: bool = False,
+                     assignment_state: str | None = None,
                      sort: Literal["name", "created", "status"] = "name",
                      direction: Literal["asc", "desc"] = "asc", offset: int = Offset, limit: int = Limit):
         with read(request, permission + ".read", ISP) as (db, actor):
             return store.listing(db, resource, actor.company, q=q, status=status, category=category,
                                  client=client_id, site=site_id, sort=sort, direction=direction, offset=offset, limit=limit,
                                  site_type=site_type, device_category=device_category, isp_site=isp_site,
-                                 eligible_for=eligible_for, linkable_service=linkable_service)
+                                 eligible_for=eligible_for, linkable_service=linkable_service, assignment_state=assignment_state)
 
     @router.get(path + "/{record_id}")
     def get_record(record_id: UUID, request: Request):
@@ -43,6 +46,16 @@ def resource_routes(path, permission, resource, input_model):
     def edit_record(record_id: UUID, data: input_model, request: Request):
         with write(request, permission + ".write", ISP) as (db, actor):
             return operations.save(db, actor, resource, data, record_id)
+
+    @router.post(path + "/{record_id}/archive")
+    def archive_record(record_id: UUID, data: schemas.Reason, request: Request):
+        with write(request, permission + ".archive", ISP) as (db, actor):
+            return lifecycle.archive(db, actor, resource, record_id, data)
+
+    @router.delete(path + "/{record_id}", status_code=204)
+    def delete_record(record_id: UUID, data: schemas.Delete, request: Request):
+        with write(request, permission + ".delete", ISP) as (db, actor):
+            lifecycle.delete(db, actor, resource, record_id, data)
 
     state_model = schemas.ServiceState if resource is store.SERVICES else schemas.State
 
@@ -65,6 +78,26 @@ resource_routes("/devices", "devices", store.DEVICES, schemas.Device)
 def register_customer(data: schemas.Registration, request: Request):
     with write(request, "clients.create", ISP) as (db, actor):
         return operations.register_customer(db, actor, data)
+
+
+@router.post("/devices/{record_id}/assignment")
+def assign_device(record_id: UUID, data: schemas.Assignment, request: Request):
+    with write(request, "devices.write", ISP) as (db, actor):
+        return operations.assign_device(db, actor, record_id, data)
+
+
+@router.get("/devices/{record_id}/assignments")
+def assignment_history(record_id: UUID, request: Request, offset: int = Offset, limit: int = Limit):
+    with read(request, "devices.read", ISP) as (db, actor):
+        store.owned(db, "devices", actor.company, record_id)
+        items = rows(db, """
+            SELECT h.id,h.occurred_at,h.previous_data,h.current_data,h.reason,u.name AS actor
+            FROM crm.device_assignments h JOIN core.memberships m ON (m.company_id,m.id)=(h.company_id,h.actor_id)
+            JOIN core.users u ON u.id=m.user_id
+            WHERE h.company_id=:company AND h.device_id=:id
+            ORDER BY h.occurred_at DESC,h.id OFFSET :offset LIMIT :limit
+        """, company=actor.company, id=record_id, offset=offset, limit=limit + 1)
+        return {"items": items[:limit], "has_more": len(items) > limit}
 
 
 def child_routes(path, table, entity, input_model, *, append_only=False):
@@ -178,7 +211,7 @@ def infrastructure(request: Request, q: str = Search, role: schemas.Role | None 
                    d.id AS device_id,d.name AS device_name,d.device_role,
                    d.administrative_active AND d.retired_at IS NULL AS device_active
             FROM crm.sites s LEFT JOIN crm.devices d ON d.company_id=s.company_id AND d.site_id=s.id
-            WHERE s.company_id=:company AND s.site_category IN ('NETWORK','FACILITY')
+            WHERE s.company_id=:company AND s.site_category IN ('NETWORK','FACILITY') AND s.archived_at IS NULL
               AND (CAST(:role AS text) IS NULL OR d.device_role=:role)
               AND strpos(lower(concat_ws(' ',s.name,d.name)),lower(:q))>0
             ORDER BY lower(s.name),lower(d.name),s.id,d.id OFFSET :offset LIMIT :limit
@@ -194,28 +227,56 @@ def dashboard(request: Request):
         if "clients.read" in permissions:
             result["clients"] = row(db, """
                 SELECT count(*) AS total,count(*) FILTER (WHERE status='ACTIVE') AS active
-                FROM crm.clients WHERE company_id=:company
+                FROM crm.clients WHERE company_id=:company AND archived_at IS NULL
             """, company=actor.company)
         if "services.read" in permissions:
             result["services"] = row(db, """
                 SELECT count(*) AS total,count(*) FILTER (WHERE status='ACTIVE') AS active,
                        count(*) FILTER (WHERE status='PENDING') AS pending,
                        count(*) FILTER (WHERE status='SUSPENDED') AS suspended
-                FROM crm.services WHERE company_id=:company
+                FROM crm.services WHERE company_id=:company AND archived_at IS NULL
             """, company=actor.company)
             if "internet_plans.read" in permissions:
                 result["distribution"] = rows(db, """
                     SELECT p.id,p.name,count(*) AS total FROM crm.services s
                     JOIN crm.service_plans p ON p.company_id=s.company_id AND p.id=s.plan_id
-                    WHERE s.company_id=:company AND s.status<>'CANCELLED'
+                    WHERE s.company_id=:company AND s.status<>'CANCELLED' AND s.archived_at IS NULL
                     GROUP BY p.id,p.name ORDER BY total DESC,p.id
                 """, company=actor.company)
         for permission, table in (("sites.read", "sites"), ("devices.read", "devices")):
             if permission in permissions:
-                result[table] = execute(db, f"SELECT count(*) FROM crm.{table} WHERE company_id=:company",
+                result[table] = execute(db, f"SELECT count(*) FROM crm.{table} WHERE company_id=:company AND archived_at IS NULL",
                                         company=actor.company).scalar_one()
         if "icmp.read" in permissions and "devices.read" in permissions:
             result["monitoring"] = {"available": False}
+        if "monitoring.read" in permissions:
+            active_incidents = execute(db, """
+                SELECT (SELECT count(*) FROM monitoring.incidents WHERE company_id=:company AND ended_at IS NULL)
+                  + (SELECT count(*) FROM monitoring.transport_incidents WHERE company_id=:company AND ended_at IS NULL)
+            """, company=actor.company).scalar_one()
+            result["monitoring"] = {"available": True, "active_incidents": active_incidents,
+                                    **monitoring_routes.totals(db, actor.company)}
+        if "devices.read" in permissions:
+            result["device_categories"] = {entry["device_category"]: entry["total"] for entry in rows(db, """
+                SELECT device_category,count(*) AS total FROM crm.devices
+                WHERE company_id=:company AND archived_at IS NULL GROUP BY device_category
+            """, company=actor.company)}
+        if "installations.read" in permissions:
+            result["installations"] = execute(db, """
+                SELECT count(*) FROM crm.installations WHERE company_id=:company AND archived_at IS NULL
+                AND status IN ('PENDING','SCHEDULED','IN_PROGRESS')
+            """, company=actor.company).scalar_one()
+        if "connectivity.read" in permissions:
+            result["vpn"] = row(db, """
+                SELECT c.simulated,CASE WHEN c.last_heartbeat_at IS NULL THEN 'UNKNOWN'
+                  WHEN c.last_heartbeat_at<=now()-make_interval(secs=>:stale) THEN 'STALE'
+                  WHEN v.last_probe_at IS NULL OR v.last_probe_at<=now()-make_interval(secs=>:stale) THEN 'UNKNOWN'
+                  WHEN v.connection_status='CONNECTED' AND v.consecutive_failures>0 THEN 'UNKNOWN'
+                  ELSE coalesce(v.connection_status,'UNKNOWN') END AS status
+                FROM connectivity.collectors c LEFT JOIN connectivity.vpn_tunnels v
+                  ON (v.company_id,v.collector_id)=(c.company_id,c.id) AND v.retired_at IS NULL
+                WHERE c.company_id=:company AND c.enabled AND c.retired_at IS NULL
+            """, company=actor.company, stale=stale_seconds())
         if "crm_history.read" in permissions:
             allowed = {
                 "clients.read": ["client", "contact", "address", "client_note"], "internet_plans.read": ["internet_plan"],

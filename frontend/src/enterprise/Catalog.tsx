@@ -14,6 +14,7 @@ import {
 } from "./model"
 import type { Entry, Kind } from "./model"
 import { CustomerRegistration, ServiceFields, SiteFields, serviceInput } from "./Registration"
+import { AssignAvailable, PlacementFields, ownershipOptions, placementInput } from "./Assignment"
 
 export function RecordEditor({ kind, entry, account, cancel, complete }: {
   kind: Kind; entry?: Entry; account: Account; cancel: () => void; complete: (record: Entry) => void
@@ -21,14 +22,12 @@ export function RecordEditor({ kind, entry, account, cancel, complete }: {
   const spec = catalogs[kind]
   const [client, setClient] = useState(asText(entry, "client_id"))
   const [site, setSite] = useState(asText(entry, "site_id"))
-  const [service, setService] = useState(asText(entry, "service_id"))
   const [siteKind, setSiteKind] = useState(asText(entry, "site_type"))
   const [siteCategory, setSiteCategory] = useState(asText(entry, "site_category"))
   const [deviceCategory, setDeviceCategory] = useState(asText(entry, "device_category"))
   const [linkedAddress, setLinkedAddress] = useState(asText(entry, "client_address_id"))
   const codeField = codeFields[kind]
   const editing = entry !== undefined
-  const customerEquipment = deviceCategory === "CUSTOMER_EQUIPMENT"
   const selectedCapabilities = Array.isArray(entry?.capabilities) ? entry.capabilities : []
 
   if (kind === "clients" && !editing) return <CustomerRegistration account={account} cancel={cancel} complete={complete} />
@@ -40,9 +39,8 @@ export function RecordEditor({ kind, entry, account, cancel, complete }: {
       client_address_id: linkedAddress || null,
     })
     if (kind === "devices") Object.assign(input, {
-      site_id: site, device_category: deviceCategory, client_id: customerEquipment ? client : null,
-      service_id: customerEquipment ? service || null : null,
-      capabilities: customerEquipment ? [] : data.getAll("capabilities"),
+      ...placementInput(data), device_category: deviceCategory, ownership: textValue(data, "ownership"),
+      capabilities: deviceCategory === "INFRASTRUCTURE" ? data.getAll("capabilities") : [],
     })
     const endpoint = `${crm}/${kind}${editing ? "/" + entry.id : ""}`
     complete(await api<Entry>("isp", endpoint, editing ? "PUT" : "POST", input))
@@ -74,23 +72,15 @@ export function RecordEditor({ kind, entry, account, cancel, complete }: {
     </>}
     {kind === "devices" && <>
       <Select label="Categoría funcional" value={deviceCategory} required onChange={(event) => {
-        setDeviceCategory(event.target.value); setClient(""); setSite(""); setService("")
+        setDeviceCategory(event.target.value)
       }}>
         <option value="">Selecciona…</option>
         {deviceCategories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </Select>
-      <div className="form-grid crm-relations">
-        {customerEquipment && <Relation kind="clients" label="Cliente" name="client_id" value={client}
-          known={asText(entry, "client_name")} account={account} required filters={{ status: "ACTIVE" }}
-          change={(value) => { setClient(value); setSite(""); setService("") }} />}
-        {(deviceCategory === "INFRASTRUCTURE" || (customerEquipment && client)) && <Relation key={deviceCategory + client}
-          kind="sites" label="Sitio" name="site_id" value={site} known={asText(entry, "site_name")} account={account} required
-          filters={customerEquipment ? { status: "ACTIVE", client_id: client } : { status: "ACTIVE", isp_site: "true" }}
-          change={(value) => { setSite(value); setService("") }} />}
-        {customerEquipment && site && allowed(account, "services.read") && <Relation key={site} kind="services"
-          label="Servicio asociado" name="service_id" value={service} known={asText(entry, "service_plan_name")}
-          account={account} filters={{ site_id: site, client_id: client, linkable_service: "true" }} change={setService} />}
-      </div>
+      {deviceCategory && <PlacementFields key={deviceCategory} category={deviceCategory} account={account} entry={entry} />}
+      <Select label="Propiedad del equipo" name="ownership" defaultValue={asText(entry, "ownership") || "UNKNOWN"}>
+        {ownershipOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+      </Select>
       {deviceCategory === "INFRASTRUCTURE" && <fieldset className="crm-capabilities">
         <legend>Capacidades técnicas</legend>
         {capabilities.map(([value, label]) => <label className="checkbox-label" key={value}>
@@ -119,16 +109,25 @@ export function RecordRows({ kind, entries, empty, account }: { kind: Kind; entr
   </DataTable>
 }
 
-export function RelatedRecords({ kind, account, filter }: { kind: Kind; account: Account; filter: Record<string, string> }) {
+export function RelatedRecords({ kind, account, filter, parent }: {
+  kind: Kind; account: Account; filter: Record<string, string>; parent?: Entry
+}) {
   const pager = usePager()
-  const data = useData<Page<Entry>>("isp", searchPath(`${crm}/${kind}`, pager.offset, filter))
-  return <Panel title={catalogs[kind].title}>
-    <div className="table-controls"><a className="platform-link" href={appPath(kind)}>Abrir {catalogs[kind].title.toLowerCase()}</a></div>
+  const [assigning, setAssigning] = useState(false)
+  const data = useData<Page<Entry>>("isp", searchPath(`${crm}/${kind}`, pager.offset, filter), pager.version)
+  return <>
+  {assigning && <AssignAvailable account={account} clientId={filter.client_id} siteId={filter.site_id}
+    category={filter.client_id || parent?.client_id ? "CUSTOMER_EQUIPMENT" : "INFRASTRUCTURE"}
+    cancel={() => setAssigning(false)} complete={() => { setAssigning(false); pager.reload() }} />}
+  <Panel title={catalogs[kind].title}>
+    <div className="table-controls"><a className="platform-link" href={appPath(kind)}>Abrir {catalogs[kind].title.toLowerCase()}</a>
+      {kind === "devices" && !parent?.archived_at && allowed(account, "devices.write") &&
+        <Button onClick={() => setAssigning(true)}>Asignar equipo disponible</Button>}</div>
     <DataView state={data}>{({ items, has_more }) => <>
       <RecordRows kind={kind} entries={items} empty="No hay registros asociados." account={account} />
       <Pagination offset={pager.offset} more={has_more} onChange={pager.setOffset} />
     </>}</DataView>
-  </Panel>
+  </Panel></>
 }
 
 export function CrmCatalog({ kind, account }: { kind: Kind; account: Account }) {
@@ -145,7 +144,8 @@ export function CrmCatalog({ kind, account }: { kind: Kind; account: Account }) 
   const state = useData<Page<Entry>>("isp", searchPath(`${crm}/${kind}`, pager.offset, {
     q: search, status, category, site_type: siteType, device_category: deviceCategory, sort: order, direction,
   }), pager.version)
-  const statuses = kind === "services" ? serviceStates : [...basicStates, ...(kind === "clients" ? [["CLOSED", "Cerrado"]] : [])]
+  const statuses = [...(kind === "services" ? serviceStates : [...basicStates, ...(kind === "clients" ? [["CLOSED", "Cerrado"]] : [])]),
+    ["ARCHIVED", "Archivado"]]
   return <>
     <PageHeading title={spec.title} description={kind === "internet-plans" ? "Catálogo de Internet que tu empresa ofrece a sus clientes." : undefined}
       action={allowed(account, spec.permission + ".create") && <Button variant="primary" onClick={() => setShowForm(true)}>

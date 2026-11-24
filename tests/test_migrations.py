@@ -21,7 +21,7 @@ def test_migrations_empty_database_and_health(database):
     command.upgrade(config, "head")
     command.upgrade(config, "head")
 
-    assert database.execute("SELECT version_num FROM alembic_version").fetchone() == ("0007_crm_workflow",)
+    assert database.execute("SELECT version_num FROM alembic_version").fetchone() == ("0011_icmp_monitoring",)
     tables, schemas = database.execute(
         """
         SELECT count(*), count(DISTINCT schemaname)
@@ -29,11 +29,11 @@ def test_migrations_empty_database_and_health(database):
         """,
         (SCHEMAS,),
     ).fetchone()
-    assert (tables, schemas) == (80, 9)
+    assert (tables, schemas) == (86, 9)
     assert database.execute(
         "SELECT count(*) FROM pg_views WHERE schemaname = ANY(%s)",
         (SCHEMAS,),
-    ).fetchone() == (5,)
+    ).fetchone() == (6,)
     assert database.execute(
         """
         SELECT code, monthly_price, currency, trial_days, public_signup_enabled
@@ -43,7 +43,7 @@ def test_migrations_empty_database_and_health(database):
         """
     ).fetchone() == ("TRIAL", 0, "BOB", None, False)
     assert database.execute("SELECT code FROM platform.features WHERE implemented ORDER BY code").fetchall() == [
-        ("ACCESS",), ("CONNECTIVITY",), ("CRM",), ("ICMP_CONFIG",), ("SAAS_SUPPORT",)
+        ("ACCESS",), ("CONNECTIVITY",), ("CRM",), ("ICMP",), ("ICMP_CONFIG",), ("SAAS_SUPPORT",)
     ]
     assert database.execute("SELECT count(*) FROM core.companies").fetchone() == (0,)
     assert database.execute("SELECT count(*) FROM core.users").fetchone() == (0,)

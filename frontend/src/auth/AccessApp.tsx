@@ -3,6 +3,7 @@ import { AdminConnectivity, IspConnectivity } from "../connectivity/Connectivity
 
 import { CrmCatalog } from "../enterprise/Catalog"
 import { CrmDetail } from "../enterprise/Detail"
+import { Installations } from "../enterprise/Installations"
 import { catalogs } from "../enterprise/model"
 import type { Kind } from "../enterprise/model"
 import { FoundationDashboard } from "../FoundationDashboard"
@@ -20,6 +21,8 @@ import { ChangePasswordPage, LoginPage, RecoverPage, SignupPage } from "./Public
 
 const IspDashboard = lazy(() => import("../enterprise/Reporting").then((module) => ({ default: module.IspDashboard })))
 const InfrastructurePage = lazy(() => import("../enterprise/Reporting").then((module) => ({ default: module.InfrastructurePage })))
+const MonitoringList = lazy(() => import("../enterprise/Monitoring").then((module) => ({ default: module.MonitoringList })))
+const IncidentsPage = lazy(() => import("../enterprise/Monitoring").then((module) => ({ default: module.IncidentsPage })))
 const AdminDashboard = lazy(() => import("../platform/Reporting").then((module) => ({ default: module.AdminDashboard })))
 const AuditPage = lazy(() => import("../platform/Reporting").then((module) => ({ default: module.AuditPage })))
 
@@ -44,7 +47,11 @@ const pageConfig: Record<string, { title: string; permission?: string; scope?: S
   "/companies/new": { title: "Nueva empresa", permission: "companies.create", scope: "admin" },
   "/support/reset": { title: "Recuperar acceso ISP", permission: "support.reset", scope: "admin" },
   "/infrastructure": { title: "Infraestructura", permission: "infrastructure.read", scope: "isp" },
+  "/installations": { title: "Instalaciones", permission: "installations.read", scope: "isp" },
+  "/installations/:id": { title: "Instalación", permission: "installations.read", scope: "isp" },
   "/connectivity": { title: "Conectividad", permission: "connectivity.read", scope: "isp" },
+  "/monitoring": { title: "Monitoreo ICMP", permission: "monitoring.read", scope: "isp" },
+  "/incidents": { title: "Incidentes", permission: "monitoring.read", scope: "isp" },
   "/collectors": { title: "Collectors", permission: "connectivity.read", scope: "admin" },
   "/vpn": { title: "Conectividad VPN", permission: "connectivity.read", scope: "admin" },
   "/network-pools": { title: "Recursos de red", permission: "connectivity.read", scope: "admin" },
@@ -80,7 +87,7 @@ function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
   if (account.must_change_password) {
     return <ChangePasswordPage scope={scope} required complete={() => window.location.replace(homePath(scope))} />
   }
-  const match = /^\/(companies|plans|subscriptions|support)\/([0-9a-f-]{36})$/i.exec(route)
+  const match = /^\/(companies|plans|subscriptions|support|installations)\/([0-9a-f-]{36})$/i.exec(route)
   const key = match ? "/" + match[1] + "/:id" : route
   const id = match?.[2] ?? ""
   const crmMatch = /^\/(clients|internet-plans|services|sites|devices)(?:\/([0-9a-f-]{36}))?$/i.exec(route)
@@ -102,6 +109,9 @@ function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
   } else {
     switch (key) {
       case "/connectivity": content = <IspConnectivity account={account} />; break
+      case "/monitoring": content = <MonitoringList account={account} />; break
+      case "/incidents": content = <IncidentsPage account={account} />; break
+      case "/installations": case "/installations/:id": content = <Installations account={account} id={id || undefined} />; break
       case "/collectors": content = <AdminConnectivity account={account} view="collectors" />; break
       case "/vpn": content = <AdminConnectivity account={account} view="vpn" />; break
       case "/network-pools": content = <AdminConnectivity account={account} view="pools" />; break

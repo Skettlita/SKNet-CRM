@@ -105,7 +105,8 @@ export function CustomerRegistration({ account, cancel, complete }: {
       <section aria-labelledby="registration-installation" className="crm-form-section">
         <h3 id="registration-installation">Situación de la instalación</h3>
         <Select label="Situación inicial" name="installation_situation" defaultValue="UNDEFINED" required>
-          {installationSituations.filter(([value]) => value !== "EXISTING" || canActivate)
+          {installationSituations.filter(([value]) => (value !== "EXISTING" || canActivate) &&
+            (value !== "NEW" || allowed(account, "installations.create")))
             .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </Select>
       </section>

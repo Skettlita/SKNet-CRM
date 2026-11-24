@@ -35,9 +35,14 @@ const groups: { label: string; items: { title: string; route: string; icon: type
     { title: "Sitios", route: "/sites", icon: MapPin, permission: "sites.read", scope: "isp" },
   ] },
   { label: "Red", items: [
+    { title: "Monitoreo", route: "/monitoring", icon: Activity, permission: "monitoring.read", scope: "isp" },
+    { title: "Incidentes", route: "/incidents", icon: History, permission: "monitoring.read", scope: "isp" },
     { title: "Conectividad", route: "/connectivity", icon: Network, permission: "connectivity.read", scope: "isp" },
     { title: "Dispositivos", route: "/devices", icon: Cpu, permission: "devices.read", scope: "isp" },
     { title: "Infraestructura", route: "/infrastructure", icon: RadioTower, permission: "infrastructure.read", scope: "isp" },
+  ] },
+  { label: "Operaciones", items: [
+    { title: "Instalaciones", route: "/installations", icon: ClipboardList, permission: "installations.read", scope: "isp" },
   ] },
   { label: "Soporte", items: [
     { title: "Contactar SKNet", route: "/support", icon: LifeBuoy, permission: "support.read", scope: "isp" },

@@ -37,6 +37,7 @@ def configuration(*, required=False):
 def collector(db, company, collector_id=None):
     return row(db, """
         SELECT c.*,v.id AS tunnel_id,v.peer_public_key,v.connection_status,v.last_handshake_at,v.last_probe_at,
+               v.consecutive_failures,
                v.server_public_key,v.endpoint_host,v.internal_udp_port,v.mtu,v.keepalive_seconds,
                a.id AS allocation_id,a.docker_subnet,a.wireguard_subnet,a.external_udp_port,a.docker_network_name,
                a.edge_rule_tag,a.bind_address,
@@ -74,6 +75,8 @@ def public(record):
     result["networks"] = [str(net) for net in record["desired_routes"]]
     result["connected"] = bool(record["connection_status"] == "CONNECTED" and record["heartbeat_fresh"]
                                and record["probe_fresh"] and not record["simulated"])
+    result["transport_connected"] = bool(record["connection_status"] == "CONNECTED" and record["heartbeat_fresh"]
+                                         and record["probe_fresh"] and record["consecutive_failures"] == 0)
     if result["connection_status"] == "CONNECTED" and not record["probe_fresh"]:
         result["connection_status"] = "UNKNOWN"
     result["script_available"] = script_allowed(record) and not record["simulated"]
@@ -151,7 +154,7 @@ def stage_peer(db, actor, networks, public_key=None):
         WHERE id=:id
     """, routes=selected, id=target["id"])
     execute(db, """
-        UPDATE connectivity.vpn_tunnels SET peer_public_key=:key,connection_status='UNKNOWN',
+        UPDATE connectivity.vpn_tunnels SET peer_public_key=:key,connection_status='UNKNOWN',monitor_epoch=monitor_epoch+1,
          consecutive_failures=0,last_handshake_at=NULL,last_probe_at=NULL,last_success_at=NULL WHERE id=:id
     """, key=public_key, id=target["tunnel_id"])
     execute(db, "UPDATE connectivity.vpn_routes SET enabled=false WHERE tunnel_id=:id", id=target["tunnel_id"])

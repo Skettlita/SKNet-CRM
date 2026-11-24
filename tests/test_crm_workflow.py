@@ -164,7 +164,7 @@ def test_concurrent_codes_and_integrated_permissions(migrated, admin_id):
         migrated.execute("""
             INSERT INTO core.role_permissions(company_id,role_id,permission_id)
             SELECT r.company_id,r.id,p.id FROM core.roles r CROSS JOIN core.permissions p
-            WHERE r.id=%s AND p.code IN ('services.create','sites.create')
+            WHERE r.id=%s AND p.code IN ('services.create','sites.create','installations.create')
         """, (role,))
         assert request(clerk, "POST", CRM + "clients/register", customer("Activación restringida") |
                        initial(plan, situation="EXISTING")).status_code == 403

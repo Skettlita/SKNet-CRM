@@ -11,13 +11,15 @@ import { allowed, appPath, crm, optionsLabel, roles, siteTypes } from "./model"
 type Report = {
   clients?: { total: number; active: number }
   services?: { total: number; active: number; pending: number; suspended: number }
-  sites?: number; devices?: number; monitoring?: { available: boolean }
+  sites?: number; devices?: number; installations?: number; device_categories?: Record<string, number>
+  monitoring?: { available: boolean; monitored?: number; active_incidents?: number; states?: Record<string, number> }
+  vpn?: { simulated: boolean; status: string } | null
   distribution?: { id: string; name: string; total: number }[]
   activity?: { id: string; actor: string | null; occurred_at: string; action: string; entity_type: string }[]
 }
 
 export function IspDashboard({ account }: { account: Account }) {
-  const report = useData<Report>("isp", crm + "/dashboard")
+  const report = useData<Report>("isp", crm + "/dashboard", 0, 10000)
   return <>
     <PageHeading title="Dashboard" description={account.company_name ?? "Resumen operativo del ISP."} />
     <DataView state={report}>{(data) => {
@@ -26,10 +28,16 @@ export function IspDashboard({ account }: { account: Account }) {
         { label: "Clientes activos", value: data.clients?.active, icon: Users },
         { label: "Servicios registrados", value: data.services?.total, icon: Cable },
         { label: "Servicios activos", value: data.services?.active, icon: Activity },
-        { label: "Pendientes de instalación", value: data.services?.pending, icon: Cable },
+        { label: "Servicios pendientes", value: data.services?.pending, icon: Cable },
+        { label: "Instalaciones pendientes", value: data.installations, icon: MapPin },
         { label: "Servicios suspendidos", value: data.services?.suspended, icon: Cable },
         { label: "Sitios registrados", value: data.sites, icon: MapPin },
         { label: "Dispositivos registrados", value: data.devices, icon: Cpu },
+        { label: "Equipos de infraestructura", value: data.device_categories ? data.device_categories.INFRASTRUCTURE ?? 0 : undefined, icon: Cpu },
+        { label: "Equipos finales", value: data.device_categories ? data.device_categories.CUSTOMER_EQUIPMENT ?? 0 : undefined, icon: Cpu },
+        { label: "Equipos monitoreados", value: data.monitoring?.monitored, icon: Activity },
+        { label: "Equipos caídos", value: data.monitoring?.states ? data.monitoring.states.DOWN ?? 0 : undefined, icon: Activity },
+        { label: "Incidentes activos", value: data.monitoring?.active_incidents, icon: Activity },
       ].filter((item) => item.value !== undefined)
       return <>
         {metrics.length > 0 ? <div className="platform-metrics crm-metrics">
@@ -65,8 +73,9 @@ export function IspDashboard({ account }: { account: Account }) {
             </DataTable>
           </Panel>}
         </div>
-        {data.monitoring && <Panel title="Disponibilidad y monitoreo">
-          <p className="panel-message">Sin mediciones. La comprobación de dispositivos se habilitará junto con el collector.</p>
+        {data.vpn !== undefined && <Panel title="Conectividad WireGuard">
+          <div className="panel-body"><Status value={data.vpn?.status ?? "UNCONFIGURED"} />
+            {data.vpn?.simulated && <span> · Aprovisionamiento NAT simulado</span>}</div>
         </Panel>}
       </>
     }}</DataView>

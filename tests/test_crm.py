@@ -81,7 +81,7 @@ def test_clients_contacts_addresses_notes_and_state(migrated, admin_id):
         assert [item["id"] for item in found["items"]] == [cid]
         assert get(isp, f"clients/{cid}")["status"] == "INACTIVE"
         assert get(isp, f"clients/{cid}/contacts")["items"]
-        assert isp.delete("/api/v1/" + CRM + f"clients/{cid}").status_code == 405
+        assert request(isp, "DELETE", CRM + f"clients/{cid}", {"confirmed": True, "reason": "Error"}).status_code == 409
         accepted(request(isp, "PATCH", CRM + f"clients/{cid}/status", {**SWITCH, "active": True}))
         changes = get(isp, f"clients/{cid}/activity")["items"]
         assert {"crm.client.update", "crm.address.update", "crm.contact.create", "crm.client_note.create"} <= {item["action"] for item in changes}
@@ -128,7 +128,7 @@ def test_services_sites_and_device_configuration(migrated, admin_id):
         assert {key: defaults[key] for key in ("packet_count", "timeout_ms", "interval_seconds", "failure_threshold", "recovery_threshold")} == {
             "packet_count": 5, "timeout_ms": 2000, "interval_seconds": 30, "failure_threshold": 3, "recovery_threshold": 2,
         }
-        assert float(defaults["latency_warning_ms"]) == 200 and float(defaults["loss_failure_pct"]) == 30
+        assert float(defaults["latency_warning_ms"]) == 200 and float(defaults["loss_failure_pct"]) == 40
         accepted(request(isp, "PUT", CRM + path, {"requested": True, "interval_seconds": 45, "packet_count": 6}))
         detail = get(isp, f"devices/{device['id']}")
         assert detail["monitoring_state"] == "UNKNOWN"
@@ -152,7 +152,7 @@ def test_services_sites_and_device_configuration(migrated, admin_id):
         assert dashboard["clients"] == {"total": 1, "active": 1}
         assert dashboard["services"] == {"total": 3, "pending": 2, "active": 0, "suspended": 0}
         assert dashboard["devices"] == 2 and dashboard["sites"] == 3
-        assert dashboard["distribution"][0]["total"] == 2 and dashboard["monitoring"] == {"available": False}
+        assert dashboard["distribution"][0]["total"] == 2 and dashboard["monitoring"]["monitored"] == 0
         events = accepted(admin.get("/api/v1/admin/audit", params={"company_id": company["company_id"]}))["items"]
         assert {"crm.client.create", "crm.internet_plan.create", "crm.device.icmp", "crm.service.status", "crm.site.create"} <= {e["action"] for e in events}
         assert "cliente-1" not in str(events)
@@ -228,4 +228,4 @@ def test_migrate_crm_preserves_existing_records(database):
     """, (company,)).fetchone()[0]
     command.upgrade(config, "head")
     assert database.execute("SELECT name,observations FROM crm.clients WHERE id=%s", (cid,)).fetchone() == ("Cliente existente", None)
-    assert database.execute("SELECT code FROM platform.features WHERE implemented AND code='ICMP'").fetchone() is None
+    assert database.execute("SELECT code FROM platform.features WHERE implemented AND code='ICMP'").fetchone() == ("ICMP",)

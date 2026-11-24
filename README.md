@@ -80,6 +80,15 @@ El límite de clientes se aplica al total registrado. El límite de dispositivos
 
 Consulta las reglas del alta integrada, las capacidades de routers de acceso y el tratamiento de datos anteriores en [CRM.md](docs/CRM.md).
 
+## Verificar instalaciones y monitoreo
+
+1. Registra un cliente con servicio y selecciona **Requiere una nueva instalación**. Abre **Operaciones → Instalaciones**, programa la orden y asigna un técnico. Agrega un equipo disponible o registra uno en la orden.
+2. Inicia la ejecución y, al terminar, agrega un resultado de verificación manual o técnica. Según los permisos puedes activar el servicio, instalar los equipos registrados y solicitar monitoreo para los que tengan IPv4 efectiva.
+3. En una conexión de prueba con el collector actualizado, registra un equipo instalado con una IPv4 en una red autorizada. Configura el perfil ICMP y consulta **Red → Monitoreo**, la ficha del equipo y **Red → Incidentes**. En un destino descartable, comprueba una pérdida de respuesta con el túnel todavía sano y luego una interrupción del túnel.
+4. Para observar la actualización automática, abre las pantallas de collectors, VPN o recursos en el panel SaaS. Retira únicamente un collector de prueba y verifica que la lista se actualice sin recargar la página.
+
+Consulta las [reglas de estado y los comandos de Docker y PostgreSQL](docs/MONITORING.md).
+
 ## Recuperación
 
 - Desde **Usuarios**, un administrador con permiso puede restablecer otra cuenta de su ámbito. La contraseña temporal es de un solo uso y el cambio es obligatorio. Para un administrador ISP que perdió acceso, el operador autorizado usa **Recuperar acceso ISP** después de verificar su identidad y registrar el motivo.
@@ -141,4 +150,4 @@ Para incluir las pruebas de migración, autenticación y aislamiento, configura 
 
 `compose.yaml` se combina con `compose.dev.yaml`, `compose.test.yaml` o `compose.prod.yaml`. Cada overlay define un nombre de proyecto, redes y volúmenes independientes por proyecto y un puerto web distinto. Usa un archivo de variables separado por ambiente. TEST y PROD quedan preparados para validación posterior. Consulta [entornos](docs/ENVIRONMENTS.md) y [estado de implementación](docs/IMPLEMENTATION_STATUS.md).
 
-La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. El panel ISP incorpora CRM, conectividad WireGuard y configuración ICMP. El scheduler de monitoreo de dispositivos queda para una fase posterior.
+La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. El panel ISP incorpora CRM, instalaciones, conectividad WireGuard y monitoreo ICMP.

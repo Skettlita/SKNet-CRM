@@ -104,7 +104,8 @@ def principal(db, request, realm) -> Principal:
         feature_by_module = {
             "support": "SAAS_SUPPORT", "icmp": "ICMP_CONFIG", "connectivity": "CONNECTIVITY",
             "clients": "CRM", "sites": "CRM", "internet_plans": "CRM", "services": "CRM",
-            "devices": "CRM", "infrastructure": "CRM", "crm_history": "CRM",
+            "devices": "CRM", "infrastructure": "CRM", "crm_history": "CRM", "installations": "CRM",
+            "monitoring": "ICMP",
         }
         permissions = {
             code for code in grants

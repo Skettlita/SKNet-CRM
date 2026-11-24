@@ -40,21 +40,22 @@ SERVICES = Resource("services", "service", "c.name", "concat_ws(' ',t.service_co
                     JOIN crm.service_plans p ON p.company_id=t.company_id AND p.id=t.plan_id
                     LEFT JOIN crm.devices router ON router.company_id=t.company_id AND router.id=t.access_router_id
                     """, "t.client_id", "t.site_id")
-DEVICES = Resource("devices", "device", "t.name", "concat_ws(' ',t.name,t.device_code,t.brand,t.model,t.serial_number,host(t.ip_address),s.name)",
+DEVICES = Resource("devices", "device", "t.name", "concat_ws(' ',t.name,t.device_code,t.brand,t.model,t.serial_number,host(tracked.effective_ip),s.name)",
                    "CASE WHEN t.administrative_active AND t.retired_at IS NULL THEN 'ACTIVE' ELSE 'INACTIVE' END",
                    """, s.name AS site_name,s.client_id,c.name AS client_name,p.name AS service_plan_name,
-                   host(t.ip_address) AS ip_address_text,
+                   host(t.ip_address) AS ip_address_text,host(tracked.effective_ip) AS effective_ip,
                    CASE WHEN NOT t.administrative_active OR t.retired_at IS NOT NULL
                       OR NOT (t.monitoring_requested OR t.monitoring_enabled) THEN 'DISABLED'
                       ELSE 'UNKNOWN' END AS monitoring_state
                    """, """
-                   JOIN crm.sites s ON s.company_id=t.company_id AND s.id=t.site_id
+                   JOIN crm.device_targets tracked ON (tracked.company_id,tracked.id)=(t.company_id,t.id)
+                   LEFT JOIN crm.sites s ON s.company_id=t.company_id AND s.id=t.site_id
                    LEFT JOIN crm.clients c ON c.company_id=s.company_id AND c.id=s.client_id
                    LEFT JOIN crm.services srv ON srv.company_id=t.company_id AND srv.id=t.service_id
                    LEFT JOIN crm.service_plans p ON p.company_id=srv.company_id AND p.id=srv.plan_id
                    """, "s.client_id", "t.site_id")
 
-CODE_PREFIX = {"client": "CLI", "service": "SRV", "site": "SIT", "device": "DSP"}
+CODE_PREFIX = {"client": "CLI", "service": "SRV", "site": "SIT", "device": "DSP", "installation": "INS"}
 
 CONTACTS = "client_contacts"
 ADDRESSES = "client_addresses"
@@ -80,7 +81,7 @@ def details(db, resource, company, record_id):
 
 def listing(db, resource, company, *, q, status, sort, direction, offset, limit,
             client=None, site=None, category=None, site_type=None, device_category=None, isp_site=False,
-            eligible_for=None, linkable_service=False):
+            eligible_for=None, linkable_service=False, assignment_state=None):
     ordering = {"name": f"lower({resource.order})", "created": "t.created_at", "status": resource.status}[sort]
     sort_dir = "DESC" if direction == "desc" else "ASC"
     kind_column = {
@@ -100,18 +101,22 @@ def listing(db, resource, company, *, q, status, sort, direction, offset, limit,
     if resource is DEVICES:
         extra_filters = """
           AND (CAST(:device_category AS text) IS NULL OR t.device_category=:device_category)
+          AND (CAST(:assignment_state AS text) IS NULL OR t.assignment_state=:assignment_state)
           AND (CAST(:capability AS text) IS NULL OR (
                 t.device_category='INFRASTRUCTURE' AND t.administrative_active AND t.retired_at IS NULL
-                AND s.active AND :capability=ANY(t.capabilities)
+                AND s.active AND s.archived_at IS NULL AND t.assignment_state IN ('ASSIGNED','INSTALLED')
+                AND :capability=ANY(t.capabilities)
           ))
         """
-        params = {"device_category": device_category, "capability": ACCESS_CAPABILITY.get(eligible_for)}
+        params = {"device_category": device_category, "capability": ACCESS_CAPABILITY.get(eligible_for),
+                  "assignment_state": assignment_state}
     if resource is SERVICES and linkable_service:
         extra_filters = "AND t.status<>'CANCELLED'"
     values = rows(db, f"""
         SELECT t.*{resource.extra} FROM crm.{resource.table} t {resource.joins}
         WHERE t.company_id=:company AND strpos(lower({resource.search}),lower(:q))>0
-          AND (CAST(:status AS text) IS NULL OR {resource.status}=:status)
+          AND CASE WHEN CAST(:status AS text)='ARCHIVED' THEN t.archived_at IS NOT NULL
+                   ELSE t.archived_at IS NULL AND (CAST(:status AS text) IS NULL OR {resource.status}=:status) END
           AND (CAST(:category AS text) IS NULL OR {kind_column}=:category)
           AND (CAST(:client AS uuid) IS NULL OR {resource.client}=:client)
           AND (CAST(:site AS uuid) IS NULL OR {resource.site}=:site)

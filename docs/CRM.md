@@ -29,4 +29,12 @@ Un mismo equipo puede ser router de acceso para varios servicios. El selector mu
 - Los equipos existentes se clasifican por su sitio. Sus roles, identificadores, servicios y activos se conservan. Si un equipo propio ya figuraba como router de acceso, se le asigna la capacidad correspondiente a las modalidades de sus servicios existentes. Las asociaciones históricas que hoy no serían elegibles se conservan hasta que un operador las corrija en su módulo.
 - En servicios anteriores se conserva el estado y la fecha de activación. La situación inicial queda **Pendiente de definir** cuando falta esa información histórica.
 
-Las órdenes de instalación, la asignación de técnicos y la activación automática de PPPoE o DHCP pertenecen a fases posteriores.
+## Asignaciones e instalaciones
+
+Un equipo disponible puede registrarse sin ubicación ni IP. Desde la ficha del cliente o sitio, abre **Dispositivos → Asignar equipo disponible**. El equipo puede pasar a asignado, instalado o mantenimiento. Para desasignar o trasladar un equipo, edita su situación y ubicación en su ficha. Los cambios se consultan en **Asignaciones**. Archivar un equipo lo retira de la operación y conserva su historial.
+
+La IPv4 de gestión puede quedar sin configurar, registrarse como independiente o heredarse del servicio asociado. Una IP heredada desaparece si el servicio deja de tener IPv4. Cambiarla invalida la revisión anterior y la información histórica conserva el destino de cada muestra.
+
+Al elegir **Requiere una nueva instalación**, el alta integrada crea una orden pendiente con código `INS`. También puedes crear una orden desde un servicio pendiente. En **Operaciones → Instalaciones** programa, reprograma, asigna técnicos y registra equipos e información técnica. Los equipos pueden vincularse opcionalmente al servicio. El resultado de una verificación manual permite finalizar sin mediciones automáticas. La finalización instala los equipos relacionados y puede activar el servicio y solicitar monitoreo en equipos seleccionados, según permisos. Cancelar conserva lo registrado y deja el estado del servicio intacto.
+
+Archivar excluye el registro de las listas operativas. **Eliminar** exige confirmación, motivo y el permiso de su módulo. La API identifica las dependencias protegidas y mantiene la auditoría y el contador del código. Las órdenes con historial se conservan. La gestión administrativa no aplica configuraciones PPPoE ni DHCP al router.

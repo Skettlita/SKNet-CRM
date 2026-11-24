@@ -129,3 +129,19 @@ El collector, el aprovisionamiento, las mediciones de red y los módulos posteri
 | DEV existente | Se aplicó `0007_crm_workflow (head)`. Las columnas anteriores comparadas coincidieron para un cliente, un sitio y un dispositivo, así como para dos collectors históricos y sus reservas y túneles. El sitio anterior quedó como infraestructura de red de tipo Otro. Los cuatro servicios respondieron saludables. El collector vigente seguía enviando heartbeat y el túnel seguía reportando conexión. |
 
 La prueba física del RB5009 corresponde al usuario y precede a esta fase. Las órdenes de instalación, la asignación de técnicos, el monitoreo automático y la automatización PPPoE/DHCP quedan pendientes.
+
+## Fases 4.2 y 6 · CRM, instalaciones y monitoreo
+
+| Etapa | Implementación y validación |
+|---|---|
+| A · CRM | Archivo, eliminación confirmada con comprobación de dependencias, filtros y auditoría. FastAPI indica los campos inválidos, React señala el error sin borrar valores. Prueba de CRM y compilación completadas por etapa. |
+| B · Equipos | Alta sin sitio ni IP, asignación y traslado con historial, estado operativo y propiedad. La IP heredada se resuelve por referencia al servicio. Pasaron las pruebas de asignación y migración y compiló el frontend. |
+| C · Instalaciones | El alta nueva puede crear la orden en la misma transacción. Incluye técnicos, programación, equipos, verificación, finalización y activación administrativa, con permisos separados. Pasaron las pruebas de orden, finalización, cancelación y migración, y compiló el frontend. |
+| D · ICMP | Cada collector programa pings dentro de su túnel. El backend autentica al collector, valida IP, revisión y pertenencia, y registra muestras, estado e incidentes. En Docker Desktop se comprobó WireGuard real contra un peer Linux aislado. Se obtuvieron 5 respuestas de 5 con 0 % de pérdida y RTT medio de 1,062 ms en la corrida que completó el ciclo. La pérdida de respuesta del destino produjo DOWN y un único incidente. Al restaurar la IP se cerró ese incidente y la pérdida posterior del túnel produjo UNREACHABLE y un incidente VPN sin generar otro incidente de equipo. |
+| E · Integración | Actualización HTTP de collectors, VPN, trabajos, pools, dashboard ISP, monitoreo e incidentes. Edge comprobó instalación, errores debajo de los campos, conservación de los valores, detalle ICMP y retiro automático del collector de QA sin recargar el documento. La reserva se liberó. |
+
+DEV migró hasta `0011_icmp_monitoring` y conservó los identificadores de siete registros de CRM, dos collectors históricos, dos túneles y dos credenciales. Se reinició únicamente el backend para cargar las nuevas rutas privadas. El collector operativo conservó su contenedor y sus volúmenes. Los ensayos reales de esta fase usaron un peer Linux descartable de Docker Desktop. El RB5009 no intervino en el ensayo.
+
+La imagen nueva sirve para futuros collectors. El collector DEV que ya estaba en marcha sigue usando su imagen anterior. Cambiar su imagen requiere una ventana autorizada. La verificación de carga y el despliegue Ubuntu quedan pendientes. [Reglas y verificación ICMP](MONITORING.md).
+
+La suite final aprobó 30 pruebas y compiló TypeScript y Vite. Una comprobación adicional validó la eliminación de muestras vencidas, la conservación del incidente de dispositivo y el registro de un incidente por heartbeat vencido. El reinicio de PostgreSQL de QA conservó diez muestras, el incidente recuperado y la orden de prueba. Se mantiene el aviso de deprecación de Starlette/AnyIO.
