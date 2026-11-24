@@ -1,0 +1,111 @@
+erDiagram
+    CORE_COMPANIES ||--o{ MONITORING_ICMP_PROFILES : "company_id"
+    CRM_DEVICES ||--o{ MONITORING_ICMP_PROFILES : "company_id,device_id"
+    CORE_COMPANIES ||--o{ MONITORING_ICMP_CHECKS : "company_id"
+    CONNECTIVITY_COLLECTORS ||--o{ MONITORING_ICMP_CHECKS : "company_id,collector_id"
+    CRM_DEVICES ||--o{ MONITORING_ICMP_CHECKS : "company_id,device_id"
+    CORE_COMPANIES ||--o{ MONITORING_DEVICE_STATUS : "company_id"
+    CRM_DEVICES ||--o{ MONITORING_DEVICE_STATUS : "company_id,device_id"
+    CORE_COMPANIES ||--o{ MONITORING_INCIDENTS : "company_id"
+    CRM_DEVICES ||--o{ MONITORING_INCIDENTS : "company_id,device_id"
+    CORE_COMPANIES ||--o{ MONITORING_STATUS_EVENTS : "company_id"
+    CRM_DEVICES ||--o{ MONITORING_STATUS_EVENTS : "company_id,device_id"
+    CORE_COMPANIES ||--o{ MONITORING_ALERTS : "company_id"
+    MONITORING_INCIDENTS ||--o{ MONITORING_ALERTS : "company_id,incident_id"
+    CRM_DEVICES ||--o{ MONITORING_ALERTS : "company_id,device_id"
+    CONNECTIVITY_VPN_TUNNELS ||--o{ MONITORING_ALERTS : "company_id,tunnel_id"
+    CORE_MEMBERSHIPS ||--o{ MONITORING_ALERTS : "company_id,acknowledged_by"
+    CONNECTIVITY_COLLECTORS {
+        uuid id PK
+    }
+    CONNECTIVITY_VPN_TUNNELS {
+        uuid id PK
+    }
+    CORE_COMPANIES {
+        uuid id PK
+    }
+    CORE_MEMBERSHIPS {
+        uuid id PK
+    }
+    CRM_DEVICES {
+        uuid id PK
+    }
+    MONITORING_ALERTS {
+        uuid id PK
+        uuid company_id FK
+        uuid incident_id FK
+        uuid device_id FK
+        uuid tunnel_id FK
+        text event_type
+        text severity
+        text message
+        timestamptz created_at
+        uuid acknowledged_by FK
+        timestamptz acknowledged_at
+    }
+    MONITORING_DEVICE_STATUS {
+        uuid id PK
+        uuid company_id FK
+        uuid device_id FK
+        text status
+        timestamptz last_check_at
+        timestamptz last_success_at
+        numeric last_latency_ms
+        numeric last_packet_loss_pct
+        timestamptz last_valid_check_at
+        uuid last_measurement_id
+        bigint device_config_revision
+        integer consecutive_failures
+        integer consecutive_successes
+        timestamptz changed_at
+    }
+    MONITORING_ICMP_CHECKS {
+        uuid id PK
+        uuid company_id FK
+        uuid device_id FK
+        uuid collector_id FK
+        uuid measurement_id
+        bigint device_config_revision
+        timestamptz checked_at
+        timestamptz received_at
+        smallint packets_sent
+        smallint packets_received
+        text result
+        numeric latency_ms
+        numeric packet_loss_pct
+        text error_detail
+    }
+    MONITORING_ICMP_PROFILES {
+        uuid id PK
+        uuid company_id FK
+        uuid device_id FK
+        boolean enabled
+        integer interval_seconds
+        integer timeout_ms
+        smallint packet_count
+        numeric latency_warning_ms
+        numeric loss_warning_pct
+        numeric loss_failure_pct
+        smallint failure_threshold
+        smallint recovery_threshold
+    }
+    MONITORING_INCIDENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid device_id FK
+        text incident_type
+        timestamptz started_at
+        timestamptz detected_at
+        timestamptz ended_at
+        text end_reason
+        text summary
+    }
+    MONITORING_STATUS_EVENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid device_id FK
+        text previous_status
+        text new_status
+        text reason
+        timestamptz occurred_at
+    }

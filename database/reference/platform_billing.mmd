@@ -1,0 +1,76 @@
+erDiagram
+    CORE_COMPANIES ||--o{ PLATFORM_BILLING_CHARGES : "company_id"
+    PLATFORM_SUBSCRIPTIONS ||--o{ PLATFORM_BILLING_CHARGES : "company_id,subscription_id"
+    CORE_COMPANIES ||--o{ PLATFORM_BILLING_PAYMENTS : "company_id"
+    PLATFORM_STAFF ||--o{ PLATFORM_BILLING_PAYMENTS : "received_by"
+    CORE_COMPANIES ||--o{ PLATFORM_BILLING_PAYMENT_ALLOCATIONS : "company_id"
+    PLATFORM_BILLING_PAYMENTS ||--o{ PLATFORM_BILLING_PAYMENT_ALLOCATIONS : "company_id,currency,payment_id"
+    PLATFORM_BILLING_CHARGES ||--o{ PLATFORM_BILLING_PAYMENT_ALLOCATIONS : "company_id,currency,charge_id"
+    PLATFORM_BILLING_PAYMENTS ||--o{ PLATFORM_BILLING_PAYMENT_ALLOCATIONS : "company_id,payment_id"
+    PLATFORM_BILLING_CHARGES ||--o{ PLATFORM_BILLING_PAYMENT_ALLOCATIONS : "company_id,charge_id"
+    CORE_COMPANIES ||--o{ PLATFORM_BILLING_RECEIPTS : "company_id"
+    PLATFORM_BILLING_PAYMENTS ||--o{ PLATFORM_BILLING_RECEIPTS : "company_id,payment_id"
+    CORE_COMPANIES ||--o{ PLATFORM_BILLING_ADJUSTMENTS : "company_id"
+    PLATFORM_BILLING_CHARGES ||--o{ PLATFORM_BILLING_ADJUSTMENTS : "company_id,charge_id"
+    PLATFORM_STAFF ||--o{ PLATFORM_BILLING_ADJUSTMENTS : "created_by"
+    CORE_COMPANIES {
+        uuid id PK
+    }
+    PLATFORM_STAFF {
+        uuid id PK
+    }
+    PLATFORM_SUBSCRIPTIONS {
+        uuid id PK
+    }
+    PLATFORM_BILLING_ADJUSTMENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid charge_id FK
+        numeric amount
+        text reason
+        uuid created_by FK
+        timestamptz created_at
+    }
+    PLATFORM_BILLING_CHARGES {
+        uuid id PK
+        uuid company_id FK
+        uuid subscription_id FK
+        text description
+        text charge_type
+        date period_start
+        date period_end
+        date generated_on
+        date due_on
+        numeric amount
+        char currency
+        timestamptz created_at
+    }
+    PLATFORM_BILLING_PAYMENT_ALLOCATIONS {
+        uuid id PK
+        uuid company_id FK
+        uuid payment_id FK
+        uuid charge_id FK
+        char currency FK
+        numeric amount
+        timestamptz created_at
+    }
+    PLATFORM_BILLING_PAYMENTS {
+        uuid id PK
+        uuid company_id FK
+        numeric amount
+        char currency
+        text method
+        text reference
+        uuid received_by FK
+        timestamptz paid_at
+        timestamptz voided_at
+        text void_reason
+    }
+    PLATFORM_BILLING_RECEIPTS {
+        uuid id PK
+        uuid company_id FK
+        uuid payment_id FK
+        text receipt_number
+        timestamptz issued_at
+        timestamptz voided_at
+    }

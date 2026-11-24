@@ -1,0 +1,1 @@
+Descomprime aquí el código de v0 dentro de v0-prototype/. Debe quedar package.json en esa carpeta (no ZIP anidado). No incluido en este paquete. No copiar .env ni secretos. Es una referencia, no el runtime final.

@@ -1,0 +1,88 @@
+erDiagram
+    CORE_COMPANIES ||--o{ CORE_MEMBERSHIPS : "company_id"
+    CORE_USERS ||--o{ CORE_MEMBERSHIPS : "user_id,account_scope"
+    CORE_USERS ||--o{ CORE_MEMBERSHIPS : "user_id"
+    CORE_COMPANIES ||--o{ CORE_ROLES : "company_id"
+    CORE_COMPANIES ||--o{ CORE_MEMBERSHIP_ROLES : "company_id"
+    CORE_MEMBERSHIPS ||--o{ CORE_MEMBERSHIP_ROLES : "company_id,membership_id"
+    CORE_ROLES ||--o{ CORE_MEMBERSHIP_ROLES : "company_id,role_id"
+    CORE_COMPANIES ||--o{ CORE_ROLE_PERMISSIONS : "company_id"
+    CORE_ROLES ||--o{ CORE_ROLE_PERMISSIONS : "company_id,role_id"
+    CORE_PERMISSIONS ||--o{ CORE_ROLE_PERMISSIONS : "permission_id"
+    CORE_USERS ||--o{ CORE_PASSWORD_RESET_TOKENS : "user_id"
+    CORE_USERS ||--o{ CORE_SESSIONS : "user_id"
+    CORE_USERS ||--o{ CORE_SESSIONS : "user_id,account_scope"
+    CORE_COMPANIES {
+        uuid id PK
+        text name
+        text tax_id
+        text email
+        text phone
+        text timezone
+        text status
+        timestamptz created_at
+    }
+    CORE_MEMBERSHIP_ROLES {
+        uuid id PK
+        uuid company_id FK
+        uuid membership_id FK
+        uuid role_id FK
+    }
+    CORE_MEMBERSHIPS {
+        uuid id PK
+        uuid company_id FK
+        uuid user_id FK
+        text account_scope FK
+        boolean active
+        timestamptz created_at
+    }
+    CORE_PASSWORD_RESET_TOKENS {
+        uuid id PK
+        uuid user_id FK
+        text token_hash
+        timestamptz created_at
+        timestamptz expires_at
+        timestamptz revoked_at
+        timestamptz used_at
+    }
+    CORE_PERMISSIONS {
+        uuid id PK
+        text code
+        text description
+    }
+    CORE_ROLE_PERMISSIONS {
+        uuid id PK
+        uuid company_id FK
+        uuid role_id FK
+        uuid permission_id FK
+    }
+    CORE_ROLES {
+        uuid id PK
+        uuid company_id FK
+        text name
+        text description
+    }
+    CORE_SESSIONS {
+        uuid id PK
+        uuid user_id FK
+        text account_scope FK
+        text token_hash
+        timestamptz created_at
+        timestamptz expires_at
+        timestamptz last_seen_at
+        timestamptz revoked_at
+    }
+    CORE_USERS {
+        uuid id PK
+        text name
+        text email
+        text username
+        text account_scope
+        timestamptz email_verified_at
+        boolean must_change_password
+        timestamptz last_login_at
+        timestamptz updated_at
+        text password_hash
+        boolean active
+        timestamptz created_at
+    }

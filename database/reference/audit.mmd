@@ -1,0 +1,21 @@
+erDiagram
+    CORE_USERS ||--o{ AUDIT_EVENTS : "actor_user_id"
+    CORE_COMPANIES ||--o{ AUDIT_EVENTS : "company_id"
+    AUDIT_EVENTS {
+        uuid id PK
+        uuid actor_user_id FK
+        uuid company_id FK
+        text action
+        text entity_type
+        uuid entity_id
+        jsonb before_data
+        jsonb after_data
+        text reason
+        timestamptz occurred_at
+    }
+    CORE_COMPANIES {
+        uuid id PK
+    }
+    CORE_USERS {
+        uuid id PK
+    }

@@ -1,0 +1,119 @@
+erDiagram
+    CORE_COMPANIES ||--o{ CONNECTIVITY_COLLECTORS : "company_id"
+    CORE_COMPANIES ||--o{ CONNECTIVITY_RESOURCE_ALLOCATIONS : "company_id"
+    CONNECTIVITY_NETWORK_POOLS ||--o{ CONNECTIVITY_RESOURCE_ALLOCATIONS : "pool_id"
+    CONNECTIVITY_COLLECTORS ||--o{ CONNECTIVITY_RESOURCE_ALLOCATIONS : "company_id,collector_id"
+    CORE_COMPANIES ||--o{ CONNECTIVITY_VPN_TUNNELS : "company_id"
+    CONNECTIVITY_RESOURCE_ALLOCATIONS ||--o{ CONNECTIVITY_VPN_TUNNELS : "company_id,collector_id,allocation_id"
+    CORE_COMPANIES ||--o{ CONNECTIVITY_VPN_ROUTES : "company_id"
+    CONNECTIVITY_VPN_TUNNELS ||--o{ CONNECTIVITY_VPN_ROUTES : "company_id,tunnel_id"
+    CORE_COMPANIES ||--o{ CONNECTIVITY_COLLECTOR_CREDENTIALS : "company_id"
+    CONNECTIVITY_COLLECTORS ||--o{ CONNECTIVITY_COLLECTOR_CREDENTIALS : "company_id,collector_id"
+    CORE_COMPANIES ||--o{ CONNECTIVITY_PROVISIONING_JOBS : "company_id"
+    CORE_USERS ||--o{ CONNECTIVITY_PROVISIONING_JOBS : "requested_by_user_id"
+    CONNECTIVITY_COLLECTORS ||--o{ CONNECTIVITY_PROVISIONING_JOBS : "company_id,collector_id"
+    CORE_COMPANIES ||--o{ CONNECTIVITY_VPN_EVENTS : "company_id"
+    CONNECTIVITY_VPN_TUNNELS ||--o{ CONNECTIVITY_VPN_EVENTS : "company_id,tunnel_id"
+    CONNECTIVITY_COLLECTOR_CREDENTIALS {
+        uuid id PK
+        uuid company_id FK
+        uuid collector_id FK
+        text token_hash
+        timestamptz created_at
+        timestamptz expires_at
+        timestamptz revoked_at
+    }
+    CONNECTIVITY_COLLECTORS {
+        uuid id PK
+        uuid company_id FK
+        text name
+        text docker_container_id
+        text provisioning_status
+        boolean enabled
+        timestamptz last_heartbeat_at
+        text last_error
+        bigint config_revision
+        timestamptz created_at
+        timestamptz retired_at
+    }
+    CONNECTIVITY_NETWORK_POOLS {
+        uuid id PK
+        text name
+        cidr docker_pool
+        cidr wireguard_pool
+        integer port_start
+        integer port_end
+        text endpoint_host
+        boolean enabled
+    }
+    CONNECTIVITY_PROVISIONING_JOBS {
+        uuid id PK
+        uuid company_id FK
+        uuid collector_id FK
+        uuid requested_by_user_id FK
+        text operation
+        text idempotency_key
+        text status
+        integer attempts
+        text last_error
+        timestamptz created_at
+        timestamptz started_at
+        timestamptz finished_at
+    }
+    CONNECTIVITY_RESOURCE_ALLOCATIONS {
+        uuid id PK
+        uuid company_id FK
+        uuid collector_id FK
+        uuid pool_id FK
+        text docker_network_name
+        cidr docker_subnet
+        cidr wireguard_subnet
+        integer external_udp_port
+        text edge_rule_tag
+        text status
+        timestamptz reserved_at
+        timestamptz released_at
+    }
+    CONNECTIVITY_VPN_EVENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid tunnel_id FK
+        text event_type
+        text detail
+        timestamptz occurred_at
+    }
+    CONNECTIVITY_VPN_ROUTES {
+        uuid id PK
+        uuid company_id FK
+        uuid tunnel_id FK
+        cidr destination_network
+        boolean enabled
+    }
+    CONNECTIVITY_VPN_TUNNELS {
+        uuid id PK
+        uuid company_id FK
+        uuid collector_id FK
+        uuid allocation_id FK
+        text interface_name
+        text server_public_key
+        text peer_public_key
+        text private_key_ref
+        text endpoint_host
+        integer internal_udp_port
+        integer keepalive_seconds
+        integer mtu
+        boolean enabled
+        text connection_status
+        timestamptz last_handshake_at
+        timestamptz last_probe_at
+        timestamptz last_success_at
+        integer consecutive_failures
+        timestamptz created_at
+        timestamptz retired_at
+    }
+    CORE_COMPANIES {
+        uuid id PK
+    }
+    CORE_USERS {
+        uuid id PK
+    }

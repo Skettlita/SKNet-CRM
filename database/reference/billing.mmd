@@ -1,0 +1,96 @@
+erDiagram
+    CORE_COMPANIES ||--o{ BILLING_BILLING_PROFILES : "company_id"
+    CRM_CLIENTS ||--o{ BILLING_BILLING_PROFILES : "company_id,client_id"
+    CORE_COMPANIES ||--o{ BILLING_CHARGES : "company_id"
+    CRM_SERVICES ||--o{ BILLING_CHARGES : "company_id,client_id,service_id"
+    CRM_SERVICES ||--o{ BILLING_CHARGES : "company_id,service_id"
+    CRM_CLIENTS ||--o{ BILLING_CHARGES : "company_id,client_id"
+    CORE_COMPANIES ||--o{ BILLING_PAYMENTS : "company_id"
+    CORE_MEMBERSHIPS ||--o{ BILLING_PAYMENTS : "company_id,received_by"
+    CRM_CLIENTS ||--o{ BILLING_PAYMENTS : "company_id,client_id"
+    CORE_COMPANIES ||--o{ BILLING_PAYMENT_ALLOCATIONS : "company_id"
+    BILLING_PAYMENTS ||--o{ BILLING_PAYMENT_ALLOCATIONS : "company_id,client_id,currency,payment_id"
+    BILLING_CHARGES ||--o{ BILLING_PAYMENT_ALLOCATIONS : "company_id,client_id,currency,charge_id"
+    BILLING_PAYMENTS ||--o{ BILLING_PAYMENT_ALLOCATIONS : "company_id,payment_id"
+    BILLING_CHARGES ||--o{ BILLING_PAYMENT_ALLOCATIONS : "company_id,charge_id"
+    CORE_COMPANIES ||--o{ BILLING_RECEIPTS : "company_id"
+    BILLING_PAYMENTS ||--o{ BILLING_RECEIPTS : "company_id,payment_id"
+    CORE_COMPANIES ||--o{ BILLING_ADJUSTMENTS : "company_id"
+    BILLING_CHARGES ||--o{ BILLING_ADJUSTMENTS : "company_id,charge_id"
+    CORE_MEMBERSHIPS ||--o{ BILLING_ADJUSTMENTS : "company_id,created_by"
+    BILLING_ADJUSTMENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid charge_id FK
+        numeric amount
+        text reason
+        uuid created_by FK
+        timestamptz created_at
+    }
+    BILLING_BILLING_PROFILES {
+        uuid id PK
+        uuid company_id FK
+        uuid client_id FK
+        smallint billing_day
+        integer payment_term_days
+        char currency
+        timestamptz created_at
+    }
+    BILLING_CHARGES {
+        uuid id PK
+        uuid company_id FK
+        uuid client_id FK
+        uuid service_id FK
+        text description
+        text charge_type
+        date period_start
+        date period_end
+        date generated_on
+        date due_on
+        numeric amount
+        char currency
+        timestamptz created_at
+    }
+    BILLING_PAYMENT_ALLOCATIONS {
+        uuid id PK
+        uuid company_id FK
+        uuid client_id FK
+        uuid payment_id FK
+        uuid charge_id FK
+        char currency FK
+        numeric amount
+        timestamptz created_at
+    }
+    BILLING_PAYMENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid client_id FK
+        numeric amount
+        char currency
+        text method
+        text reference
+        uuid received_by FK
+        timestamptz paid_at
+        timestamptz voided_at
+        text void_reason
+    }
+    BILLING_RECEIPTS {
+        uuid id PK
+        uuid company_id FK
+        uuid payment_id FK
+        text receipt_number
+        timestamptz issued_at
+        timestamptz voided_at
+    }
+    CORE_COMPANIES {
+        uuid id PK
+    }
+    CORE_MEMBERSHIPS {
+        uuid id PK
+    }
+    CRM_CLIENTS {
+        uuid id PK
+    }
+    CRM_SERVICES {
+        uuid id PK
+    }

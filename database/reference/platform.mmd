@@ -1,0 +1,168 @@
+erDiagram
+    CORE_USERS ||--o{ PLATFORM_STAFF : "user_id,account_scope"
+    CORE_USERS ||--o{ PLATFORM_STAFF : "user_id"
+    PLATFORM_STAFF ||--o{ PLATFORM_STAFF_ROLES : "staff_id"
+    PLATFORM_ROLES ||--o{ PLATFORM_STAFF_ROLES : "role_id"
+    PLATFORM_ROLES ||--o{ PLATFORM_ROLE_PERMISSIONS : "role_id"
+    PLATFORM_PERMISSIONS ||--o{ PLATFORM_ROLE_PERMISSIONS : "permission_id"
+    PLATFORM_PLANS ||--o{ PLATFORM_PLAN_VERSIONS : "plan_id"
+    PLATFORM_PLAN_VERSIONS ||--o{ PLATFORM_PLAN_FEATURES : "plan_version_id"
+    PLATFORM_FEATURES ||--o{ PLATFORM_PLAN_FEATURES : "feature_id"
+    PLATFORM_PLAN_VERSIONS ||--o{ PLATFORM_SETTINGS : "default_plan_version_id"
+    CORE_COMPANIES ||--o{ PLATFORM_SUBSCRIPTIONS : "company_id"
+    PLATFORM_PLAN_VERSIONS ||--o{ PLATFORM_SUBSCRIPTIONS : "plan_version_id"
+    CORE_COMPANIES ||--o{ PLATFORM_SUBSCRIPTION_HISTORY : "company_id"
+    PLATFORM_SUBSCRIPTIONS ||--o{ PLATFORM_SUBSCRIPTION_HISTORY : "company_id,subscription_id"
+    CORE_USERS ||--o{ PLATFORM_SUBSCRIPTION_HISTORY : "changed_by"
+    PLATFORM_PLAN_VERSIONS ||--o{ PLATFORM_SUBSCRIPTION_HISTORY : "previous_plan_version_id"
+    PLATFORM_PLAN_VERSIONS ||--o{ PLATFORM_SUBSCRIPTION_HISTORY : "new_plan_version_id"
+    CORE_COMPANIES ||--o{ PLATFORM_SUPPORT_TICKETS : "company_id"
+    CORE_MEMBERSHIPS ||--o{ PLATFORM_SUPPORT_TICKETS : "company_id,requested_by"
+    PLATFORM_STAFF ||--o{ PLATFORM_SUPPORT_TICKETS : "assigned_staff_id"
+    CORE_COMPANIES ||--o{ PLATFORM_SUPPORT_TICKET_COMMENTS : "company_id"
+    PLATFORM_SUPPORT_TICKETS ||--o{ PLATFORM_SUPPORT_TICKET_COMMENTS : "company_id,ticket_id"
+    CORE_USERS ||--o{ PLATFORM_SUPPORT_TICKET_COMMENTS : "author_user_id"
+    CORE_COMPANIES ||--o{ PLATFORM_SUPPORT_TICKET_HISTORY : "company_id"
+    PLATFORM_SUPPORT_TICKETS ||--o{ PLATFORM_SUPPORT_TICKET_HISTORY : "company_id,ticket_id"
+    CORE_USERS ||--o{ PLATFORM_SUPPORT_TICKET_HISTORY : "changed_by"
+    CORE_COMPANIES ||--o{ PLATFORM_SUPPORT_ACCESS_LOGS : "company_id"
+    PLATFORM_STAFF ||--o{ PLATFORM_SUPPORT_ACCESS_LOGS : "staff_id"
+    CORE_COMPANIES {
+        uuid id PK
+    }
+    CORE_MEMBERSHIPS {
+        uuid id PK
+    }
+    CORE_USERS {
+        uuid id PK
+    }
+    PLATFORM_FEATURES {
+        uuid id PK
+        text code
+        text name
+        boolean implemented
+    }
+    PLATFORM_PERMISSIONS {
+        uuid id PK
+        text code
+        text description
+    }
+    PLATFORM_PLAN_FEATURES {
+        uuid id PK
+        uuid plan_version_id FK
+        uuid feature_id FK
+    }
+    PLATFORM_PLAN_VERSIONS {
+        uuid id PK
+        uuid plan_id FK
+        integer version
+        numeric monthly_price
+        char currency
+        integer trial_days
+        integer max_clients
+        integer max_devices
+        integer max_users
+        integer min_poll_interval_seconds
+        integer retention_days
+        timestamptz effective_at
+    }
+    PLATFORM_PLANS {
+        uuid id PK
+        text code
+        text name
+        boolean active
+        timestamptz created_at
+    }
+    PLATFORM_ROLE_PERMISSIONS {
+        uuid id PK
+        uuid role_id FK
+        uuid permission_id FK
+    }
+    PLATFORM_ROLES {
+        uuid id PK
+        text name
+        text description
+    }
+    PLATFORM_SETTINGS {
+        boolean singleton PK
+        boolean public_signup_enabled
+        uuid default_plan_version_id FK
+        timestamptz updated_at
+    }
+    PLATFORM_STAFF {
+        uuid id PK
+        uuid user_id FK
+        text account_scope FK
+        boolean active
+    }
+    PLATFORM_STAFF_ROLES {
+        uuid id PK
+        uuid staff_id FK
+        uuid role_id FK
+    }
+    PLATFORM_SUBSCRIPTION_HISTORY {
+        uuid id PK
+        uuid company_id FK
+        uuid subscription_id FK
+        uuid changed_by FK
+        text previous_status
+        text new_status
+        uuid previous_plan_version_id FK
+        uuid new_plan_version_id FK
+        text reason
+        timestamptz changed_at
+    }
+    PLATFORM_SUBSCRIPTIONS {
+        uuid id PK
+        uuid company_id FK
+        uuid plan_version_id FK
+        text status
+        timestamptz starts_at
+        timestamptz ends_at
+        smallint billing_day
+        integer payment_term_days
+    }
+    PLATFORM_SUPPORT_ACCESS_LOGS {
+        uuid id PK
+        uuid company_id FK
+        uuid staff_id FK
+        text reason
+        timestamptz started_at
+        timestamptz expires_at
+        timestamptz ended_at
+    }
+    PLATFORM_SUPPORT_TICKET_COMMENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid ticket_id FK
+        uuid author_user_id FK
+        text body
+        boolean internal
+        timestamptz created_at
+    }
+    PLATFORM_SUPPORT_TICKET_HISTORY {
+        uuid id PK
+        uuid company_id FK
+        uuid ticket_id FK
+        uuid changed_by FK
+        text actor_type
+        text previous_status
+        text new_status
+        text reason
+        timestamptz changed_at
+    }
+    PLATFORM_SUPPORT_TICKETS {
+        uuid id PK
+        uuid company_id FK
+        uuid requested_by FK
+        text origin
+        text fault_key
+        uuid assigned_staff_id FK
+        text subject
+        text description
+        text status
+        text priority
+        text closure_reason
+        timestamptz opened_at
+        timestamptz closed_at
+    }

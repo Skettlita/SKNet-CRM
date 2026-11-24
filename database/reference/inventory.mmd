@@ -1,0 +1,98 @@
+erDiagram
+    CORE_COMPANIES ||--o{ INVENTORY_PRODUCTS : "company_id"
+    CORE_COMPANIES ||--o{ INVENTORY_WAREHOUSES : "company_id"
+    CRM_SITES ||--o{ INVENTORY_WAREHOUSES : "company_id,site_id"
+    CORE_COMPANIES ||--o{ INVENTORY_STORAGE_LOCATIONS : "company_id"
+    INVENTORY_WAREHOUSES ||--o{ INVENTORY_STORAGE_LOCATIONS : "company_id,warehouse_id"
+    CORE_COMPANIES ||--o{ INVENTORY_STOCK_MOVEMENTS : "company_id"
+    INVENTORY_PRODUCTS ||--o{ INVENTORY_STOCK_MOVEMENTS : "company_id,product_id"
+    INVENTORY_STORAGE_LOCATIONS ||--o{ INVENTORY_STOCK_MOVEMENTS : "company_id,from_location_id"
+    INVENTORY_STORAGE_LOCATIONS ||--o{ INVENTORY_STOCK_MOVEMENTS : "company_id,to_location_id"
+    CRM_WORK_ORDERS ||--o{ INVENTORY_STOCK_MOVEMENTS : "company_id,work_order_id"
+    CORE_MEMBERSHIPS ||--o{ INVENTORY_STOCK_MOVEMENTS : "company_id,performed_by"
+    CORE_COMPANIES ||--o{ INVENTORY_ASSETS : "company_id"
+    INVENTORY_PRODUCTS ||--o{ INVENTORY_ASSETS : "company_id,product_id"
+    CRM_SITES ||--o{ INVENTORY_ASSETS : "company_id,current_site_id"
+    INVENTORY_STORAGE_LOCATIONS ||--o{ INVENTORY_ASSETS : "company_id,current_storage_location_id"
+    CORE_COMPANIES ||--o{ INVENTORY_ASSET_MOVEMENTS : "company_id"
+    INVENTORY_ASSETS ||--o{ INVENTORY_ASSET_MOVEMENTS : "company_id,asset_id"
+    CRM_SITES ||--o{ INVENTORY_ASSET_MOVEMENTS : "company_id,from_site_id"
+    CRM_SITES ||--o{ INVENTORY_ASSET_MOVEMENTS : "company_id,to_site_id"
+    INVENTORY_STORAGE_LOCATIONS ||--o{ INVENTORY_ASSET_MOVEMENTS : "company_id,from_storage_location_id"
+    INVENTORY_STORAGE_LOCATIONS ||--o{ INVENTORY_ASSET_MOVEMENTS : "company_id,to_storage_location_id"
+    CRM_WORK_ORDERS ||--o{ INVENTORY_ASSET_MOVEMENTS : "company_id,work_order_id"
+    CORE_MEMBERSHIPS ||--o{ INVENTORY_ASSET_MOVEMENTS : "company_id,performed_by"
+    CORE_COMPANIES {
+        uuid id PK
+    }
+    CORE_MEMBERSHIPS {
+        uuid id PK
+    }
+    CRM_SITES {
+        uuid id PK
+    }
+    CRM_WORK_ORDERS {
+        uuid id PK
+    }
+    INVENTORY_ASSET_MOVEMENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid asset_id FK
+        uuid from_site_id FK
+        uuid to_site_id FK
+        uuid from_storage_location_id FK
+        uuid to_storage_location_id FK
+        uuid work_order_id FK
+        uuid performed_by FK
+        text reason
+        timestamptz moved_at
+    }
+    INVENTORY_ASSETS {
+        uuid id PK
+        uuid company_id FK
+        uuid product_id FK
+        uuid current_site_id FK
+        uuid current_storage_location_id FK
+        text asset_code
+        text serial_number
+        text ownership
+        text status
+        date purchase_date
+        timestamptz created_at
+    }
+    INVENTORY_PRODUCTS {
+        uuid id PK
+        uuid company_id FK
+        text sku
+        text name
+        text brand
+        text model
+        text tracking_type
+        text unit
+        boolean active
+    }
+    INVENTORY_STOCK_MOVEMENTS {
+        uuid id PK
+        uuid company_id FK
+        uuid product_id FK
+        uuid from_location_id FK
+        uuid to_location_id FK
+        uuid work_order_id FK
+        uuid performed_by FK
+        numeric quantity
+        text reason
+        timestamptz moved_at
+    }
+    INVENTORY_STORAGE_LOCATIONS {
+        uuid id PK
+        uuid company_id FK
+        uuid warehouse_id FK
+        text code
+        text description
+    }
+    INVENTORY_WAREHOUSES {
+        uuid id PK
+        uuid company_id FK
+        uuid site_id FK
+        text name
+    }

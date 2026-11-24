@@ -1,0 +1,7 @@
+.git
+.venv
+.sknet-local
+**/node_modules
+**/dist
+**/__pycache__
+.env*

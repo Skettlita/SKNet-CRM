@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.*.example
+.venv/
+.sknet-local/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+*.pem
+*.key
+*.dump
