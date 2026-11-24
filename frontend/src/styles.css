@@ -419,3 +419,76 @@ button:disabled { opacity: .65; }
   .page-heading { align-items: start; gap: 8px; }
   .page-heading h1 { font-size: 20px; }
 }
+
+/* Formularios independientes con la tarjeta y marca del prototipo v0. */
+.access-page {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 16px;
+}
+.access-card {
+  width: min(100%, 392px);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+.access-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 20px; }
+.access-card h1 { font-size: 20px; font-weight: 650; margin: 0 0 5px; }
+.description { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.access-card > p:not(.description) { margin-bottom: 12px; }
+.access-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.access-links a, .dashboard-start a { color: var(--primary-dark); text-decoration: underline; }
+.action-form fieldset { display: grid; gap: 10px; min-inline-size: 0; }
+.form-field { display: grid; gap: 4px; font-size: 13px; font-weight: 550; min-width: 0; }
+.form-field input {
+  width: 100%;
+  min-height: 32px;
+  background: var(--card);
+  border: 1px solid #d1d5db;
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  font-weight: 400;
+}
+.form-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.access-card .form-actions .button { width: 100%; min-height: 33px; }
+.form-error { color: #b91c1c; font-size: 13px; }
+.form-success { color: #15803d; margin: 4px 0; font-size: 13px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+.checkbox-label { display: flex; align-items: center; gap: 7px; font-size: 13px; min-height: 24px; }
+input[type="checkbox"] { accent-color: var(--primary); inline-size: 14px; block-size: 14px; }
+.registration-terms { padding: 6px 8px; background: var(--background); border-radius: var(--radius); font-size: 13px; }
+.registration-terms p { margin: 6px 0 0; }
+summary { cursor: pointer; }
+.editor-panel { margin-bottom: 12px; }
+.panel-body, .panel-message, .table-controls { padding: 11px 12px; }
+.panel-body > p { margin-bottom: 10px; }
+.table-controls { display: flex; align-items: end; gap: 8px; }
+.table-controls .form-field { width: min(100%, 300px); }
+.pagination-controls { align-items: center; justify-content: space-between; border-top: 1px solid var(--border); }
+.table-scroll { overflow-x: auto; }
+.access-table :is(th, td) { font-size: 12px; }
+.access-table thead th { color: #4b5563; }
+.access-table td { height: 38px; }
+.permission-group { display: grid; gap: 3px; }
+.permission-table { border: 1px solid var(--border); }
+.permission-table :is(td, th) { height: 32px; padding: 6px 9px; border-bottom: 1px solid var(--border); }
+.permission-table tbody th { background: var(--card); color: var(--foreground); text-align: left; }
+.row-actions, .dashboard-start { display: flex; flex-wrap: wrap; gap: 7px; }
+.dashboard-start { gap: 14px; }
+.temporary-password { margin-bottom: 12px; padding: 10px 12px; border: 1px solid #c4b5fd; background: #f5f3ff; border-radius: var(--radius); }
+.temporary-password code { display: block; margin: 5px 0; overflow-wrap: anywhere; }
+.profile-details { display: grid; gap: 5px 12px; grid-template-columns: max-content 1fr; max-width: 500px; }
+.profile-details dt { color: var(--muted); }
+.profile-details dd { overflow-wrap: anywhere; }
+.compact-view :is(.access-table, .health-table) td { height: 30px; padding-top: 3px; padding-bottom: 3px; }
+.group-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; text-transform: uppercase; color: #686670; }
+.group-closed { transform: rotate(-90deg); }
+.account-menu { position: relative; }
+.account-menu summary { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; }
+.account-menu summary::-webkit-details-marker { display: none; }
+.account-menu summary span { max-width: 145px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-popover { position: absolute; z-index: 5; right: 0; top: calc(100% + 4px); width: 200px; padding: 4px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+.account-popover :is(a, button) { display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px; text-align: left; font-size: 13px; }
+.account-popover :is(a, button):hover { background: var(--accent); color: var(--primary-dark); }

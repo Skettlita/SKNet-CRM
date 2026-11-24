@@ -1,9 +1,9 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
-import { FoundationDashboard } from "./FoundationDashboard"
+import { AccessApp } from "./auth/AccessApp"
 import "./styles.css"
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode><FoundationDashboard /></StrictMode>,
+  <StrictMode><AccessApp /></StrictMode>,
 )

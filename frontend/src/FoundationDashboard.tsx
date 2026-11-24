@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
 import { Activity, Database, RefreshCw } from "lucide-react"
 
-import { AppShell } from "./shared/AppShell"
 import { Button } from "./shared/Button"
 
 type Availability = "checking" | "ok" | "unavailable" | "unknown"
@@ -53,11 +52,10 @@ export function FoundationDashboard() {
   }, [request])
 
   return (
-    <AppShell>
-      <section className="page-content">
+    <>
         <div className="page-heading">
           <div>
-            <h1>Dashboard</h1>
+            <h1>Estado del sistema</h1>
             <p>Estado de la instalación de SKNet.</p>
           </div>
           <Button
@@ -73,7 +71,7 @@ export function FoundationDashboard() {
 
         <section className="table-panel" aria-labelledby="system-title">
           <div className="panel-header">
-            <h2 id="system-title">Estado del sistema</h2>
+            <h2 id="system-title">Servicios base</h2>
           </div>
           <table className="device-table health-table">
             <thead><tr><th scope="col">Servicio</th><th scope="col">Estado</th></tr></thead>
@@ -83,7 +81,6 @@ export function FoundationDashboard() {
             </tbody>
           </table>
         </section>
-      </section>
-    </AppShell>
+    </>
   )
 }

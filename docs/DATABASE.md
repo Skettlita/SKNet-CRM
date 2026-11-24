@@ -18,7 +18,7 @@ DDL y diagramas en database/reference/. Reglas vigentes en docs/MONITORING.md, P
 
 ## Inicialización y verificación
 
-La revisión `0001_schema` crea el esquema y la revisión `0002_catalog` carga el plan TRIAL, su versión y la configuración inicial. Alembic aplica ambas revisiones al arrancar el backend. `schema.sql` conserva el DDL de referencia.
+La revisión `0001_schema` crea el esquema de referencia de 78 tablas, `0002_catalog` carga el plan TRIAL y `0003_access` agrega el catálogo de acceso, el control de intentos y los campos de recuperación y preferencias. El esquema ejecutable de la fase 2 tiene 79 tablas. Alembic aplica las revisiones pendientes al arrancar el backend. `schema.sql` conserva el DDL de referencia.
 
 ```sh
 docker compose --env-file .env.dev -f compose.yaml -f compose.dev.yaml exec backend alembic current

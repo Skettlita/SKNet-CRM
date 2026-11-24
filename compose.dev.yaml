@@ -1,6 +1,14 @@
 name: sknet-dev
 services:
   backend:
+    environment:
+      SKNET_ORIGIN: ${SKNET_ORIGIN:-}
+      SKNET_COOKIE_SECURE: ${SKNET_COOKIE_SECURE:-0}
+      SKNET_SMTP_HOST: ${SKNET_SMTP_HOST:-}
+      SKNET_SMTP_PORT: ${SKNET_SMTP_PORT:-587}
+      SKNET_SMTP_FROM: ${SKNET_SMTP_FROM:-}
+      SKNET_SMTP_USER: ${SKNET_SMTP_USER:-}
+      SKNET_SMTP_PASSWORD: ${SKNET_SMTP_PASSWORD:-}
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - ./backend:/app

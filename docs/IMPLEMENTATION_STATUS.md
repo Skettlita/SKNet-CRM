@@ -29,3 +29,22 @@
 - Ejecutar y verificar en Ubuntu cuando se disponga del entorno. TEST y PROD requieren validación de sus imágenes y operación antes de desplegar.
 - La siguiente fase incorpora login separado para ISP y SaaS, signup configurable, sesiones, creación segura del primer administrador, roles y permisos. Mantener el diseño de v0 y probar el aislamiento en la API, además de las restricciones SQL ya verificadas.
 - El provisioner verifica Docker. La conexión RouterOS, los collectors, el monitoreo y las gráficas con Recharts corresponden a las fases posteriores.
+
+## Fase 2 · Autenticación y control de acceso DEV
+
+- Se añadieron los módulos FastAPI de identidad, autenticación, administración de cuentas, registro y recuperación. La revisión aditiva `0003_access` conserva los datos existentes e incorpora intentos persistentes, preferencias, vencimiento y uso de contraseñas temporales, propósito de enlaces y catálogo de permisos por ámbito.
+- ISP y SaaS usan cookies HttpOnly distintas, acotadas por ruta, con SameSite Strict. Las sesiones duran 12 horas, se verifican en PostgreSQL y se pueden revocar. Argon2id protege las contraseñas. Las escrituras comprueban el origen y las mutaciones de acceso se serializan con un bloqueo transaccional.
+- Los permisos de gestión ISP exigen una cuenta activa, una empresa activa y una suscripción vigente que tenga la función ACCESS implementada. El límite de usuarios se aplica a las cuentas activas. Los permisos de roles se combinan y el operador solo puede asignar o administrar permisos que ya posee. No se puede dejar el ámbito sin una cuenta administrativa habilitada.
+- El plan inicial es Bs 0 sin vencimiento. La edición versiona precio, duración y máximo de usuarios para altas posteriores. El alta crea las referencias predeterminadas, el primer administrador y la auditoría en una transacción. La aceptación de las condiciones de registro se registra con su versión. Los cobros corresponden a una fase posterior.
+- Vite conserva la identidad de v0 en login, signup, perfiles y administración. El menú y las acciones se filtran a partir de permisos efectivos. Los datos de prueba se generaron exclusivamente en PostgreSQL temporal.
+- La recuperación usa tokens con hash y TTL de 30 minutos cuando hay SMTP, contraseñas temporales de un solo uso de 24 horas, soporte ISP auditado y CLI SaaS. Sin SMTP se ofrece la vía administrativa. La entrega real de correo queda pendiente de un servidor SMTP configurado.
+
+### Evidencia de la fase 2
+
+| Comprobación | Resultado |
+|---|---|
+| `python -m pytest -q` con PostgreSQL 17.11 temporal | 8 pruebas aprobadas. Incluye CLI, login por usuario y correo, intentos, CSRF, roles, plan, revocación, último administrador, desactivación y aislamiento entre dos ISP. La recuperación comprobó la creación, el consumo y la revocación de enlaces con el transporte interceptado. Persiste la advertencia de Starlette/AnyIO de la fase 1. |
+| `npm --prefix frontend run build` | TypeScript y Vite compilados. |
+| Navegador con un backend real y PostgreSQL temporal | Se comprobó el formulario de registro, el login de ambos ámbitos, la matriz de permisos, los grupos plegables, el cierre de sesión SaaS y el listado de solo lectura sin botones de alta, edición o restablecimiento. La navegación directa a roles fue bloqueada y `/admin` redirigió al login SaaS sin sesión de ese ámbito. |
+| Docker Compose DEV en Windows | Se aplicó `0003_access (head)` y se reiniciaron los cuatro servicios mediante `stop` y `up --wait`. Quedaron saludables, se conservaron los conteos y el registro público siguió apagado. DEV quedó listo para crear el primer administrador real. |
+| Persistencia con datos de prueba | Al volver a iniciar el backend en la suite, se conservó la sesión y su plan. Al reiniciar físicamente el PostgreSQL temporal, la misma sesión siguió resolviendo la empresa y los permisos. |
