@@ -116,7 +116,7 @@ def assignable(db, principal, role_ids):
 
 
 def require_subset(principal, codes):
-    if not set(codes).issubset(principal.permissions):
+    if not set(codes).issubset(principal.grants):
         raise HTTPException(403, "No puedes administrar permisos que no tienes.")
 
 

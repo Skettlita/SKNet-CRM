@@ -48,3 +48,23 @@
 | Navegador con un backend real y PostgreSQL temporal | Se comprobó el formulario de registro, el login de ambos ámbitos, la matriz de permisos, los grupos plegables, el cierre de sesión SaaS y el listado de solo lectura sin botones de alta, edición o restablecimiento. La navegación directa a roles fue bloqueada y `/admin` redirigió al login SaaS sin sesión de ese ámbito. |
 | Docker Compose DEV en Windows | Se aplicó `0003_access (head)` y se reiniciaron los cuatro servicios mediante `stop` y `up --wait`. Quedaron saludables, se conservaron los conteos y el registro público siguió apagado. DEV quedó listo para crear el primer administrador real. |
 | Persistencia con datos de prueba | Al volver a iniciar el backend en la suite, se conservó la sesión y su plan. Al reiniciar físicamente el PostgreSQL temporal, la misma sesión siguió resolviendo la empresa y los permisos. |
+
+## Fase 3 · Administración de plataforma SaaS en DEV
+
+- **Empresas:** lista con búsqueda, filtros, orden y paginación. Alta administrativa conjunta con primer administrador, ficha editable, usuarios y uso de recursos según permiso. Suspensión y reactivación con auditoría, separadas de la conectividad y la suscripción. El alta conserva la regla de cero collectors.
+- **Planes, suscripciones y registro:** catálogo editable con precio por periodo, moneda, vigencia, límites y funcionalidades. Los cambios comerciales crean versiones. Configuración elige la versión predeterminada. Signup usa esa versión solo cuando está habilitado y el alta administrativa está disponible en ambos casos. Los cambios de suscripción conservan los datos y registran fechas, estado y versión. El índice existente y la transacción impiden asignaciones simultáneas para una misma empresa.
+- **Dashboard, soporte y auditoría:** métricas desde PostgreSQL y filtradas por permiso. Soporte SaaS independiente, con solicitudes ISP, asignación, respuestas, notas internas y cambios de estado. La auditoría es de consulta e incluye cambios de las entidades de plataforma. Las pantallas reutilizan el diseño v0 de SKNet.
+- La revisión aditiva `0004_platform` conserva empresas, usuarios y suscripciones. Otorga los permisos nuevos a los roles que ya reunían todos los permisos del ámbito en la Fase 2. Los roles parciales reciben únicamente lo que un administrador autorizado les asigne.
+
+### Evidencia de la fase 3
+
+| Comprobación | Resultado |
+|---|---|
+| Suite de PostgreSQL 17.11 temporal | 12 pruebas aprobadas, incluidas las 8 anteriores. Verificó alta manual y pública, elección del plan predeterminado, versionado de planes, límites de usuarios, rechazo de módulos futuros, asignación concurrente, permisos y separación de ámbitos, soporte, auditoría, persistencia y dashboard. La prueba de migración desde `0003_access` conservó datos existentes y no amplió un rol parcial. |
+| Navegador con PostgreSQL temporal | Se comprobó el dashboard con cantidades reales, la gráfica de distribución, la ficha de empresa y su utilización, la edición de un plan con versión nueva, el selector predeterminado y los historiales de suscripción, soporte y auditoría. |
+| Docker Compose DEV en Windows | Cuatro servicios saludables y revisión `0004_platform (head)`. Antes y después se conservaron los conteos de empresas, usuarios y suscripciones. El endpoint health confirmó API y PostgreSQL disponibles. Los indicadores y la misma sesión se conservaron al reiniciar físicamente el clúster PostgreSQL temporal con datos. |
+| Frontend | TypeScript y Vite compilados. El aviso por Vite se resolvió fijando 6.4.6. `npm audit` reportó 0 vulnerabilidades al ejecutar la comprobación. |
+
+### Alcance siguiente
+
+La plataforma calcula límites de clientes y dispositivos y muestra su utilización. La validación en sus futuros puntos de alta se incorpora junto al CRM y monitoreo. La recaudación, los tickets automáticos, el aprovisionamiento y el monitoreo siguen pendientes. En DEV, el dashboard distingue datos ausentes y capacidades todavía sin implementación.

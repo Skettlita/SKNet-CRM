@@ -492,3 +492,45 @@ summary { cursor: pointer; }
 .account-popover { position: absolute; z-index: 5; right: 0; top: calc(100% + 4px); width: 200px; padding: 4px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
 .account-popover :is(a, button) { display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px; text-align: left; font-size: 13px; }
 .account-popover :is(a, button):hover { background: var(--accent); color: var(--primary-dark); }
+
+/* Módulos SaaS. Reutilizan las superficies y tablas de la interfaz SKNet. */
+.platform-panel { margin-bottom: 12px; min-width: 0; }
+.platform-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.platform-filters { display: flex; flex-wrap: wrap; align-items: end; border-bottom: 1px solid var(--border); }
+.platform-filters .form-field { width: auto; min-width: min(100%, 125px); }
+.platform-filters .form-field:has(input[type="search"]) { min-width: min(100%, 230px); }
+.form-field :is(select, textarea) {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid #d1d5db;
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 4px 8px;
+  font-weight: 400;
+}
+.form-field select { max-width: 410px; }
+.form-field textarea { resize: vertical; }
+.platform-link { color: var(--primary-dark); font-weight: 550; }
+.platform-link:hover { text-decoration: underline; }
+.back-link { display: inline-block; margin-bottom: 6px; font-size: 12px; }
+.platform-summary { margin-top: 14px; }
+.detail-row { display: contents; }
+.wrap-cell, .preserve-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.platform-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(147px, 1fr)); gap: 9px; margin-bottom: 12px; }
+.metric-card { border: 1px solid var(--border); background: var(--card); border-radius: var(--radius); padding: 9px 11px; min-height: 66px; }
+.metric-card div { display: flex; align-items: center; justify-content: space-between; gap: 5px; font-size: 12px; color: var(--muted); }
+.metric-card svg { color: var(--primary); flex-shrink: 0; }
+.metric-card strong { display: block; margin-top: 3px; font-size: 20px; }
+.plan-chart { padding: 9px 6px; }
+.support-thread { margin: 0; padding: 0 12px; list-style: none; }
+.support-thread li { padding: 9px 0; border-bottom: 1px solid var(--border); }
+.support-thread li > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.support-thread li span { color: var(--muted); font-size: 12px; }
+.support-thread li small { color: var(--primary-dark); background: var(--accent); padding: 0 5px; border-radius: var(--radius); }
+.support-thread li p { margin: 4px 0; }
+.audit-changes { margin: 10px 0; }
+.audit-changes pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--background); border-radius: var(--radius); padding: 7px; font-size: 12px; }
+.status-warn { color: #92400e; }
+@media (max-width: 900px) {
+  .platform-columns { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}

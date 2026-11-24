@@ -18,7 +18,7 @@ DDL y diagramas en database/reference/. Reglas vigentes en docs/MONITORING.md, P
 
 ## Inicialización y verificación
 
-La revisión `0001_schema` crea el esquema de referencia de 78 tablas, `0002_catalog` carga el plan TRIAL y `0003_access` agrega el catálogo de acceso, el control de intentos y los campos de recuperación y preferencias. El esquema ejecutable de la fase 2 tiene 79 tablas. Alembic aplica las revisiones pendientes al arrancar el backend. `schema.sql` conserva el DDL de referencia.
+La revisión `0001_schema` crea el esquema de referencia de 78 tablas, `0002_catalog` carga el plan TRIAL y `0003_access` agrega el catálogo de acceso, el control de intentos y los campos de recuperación y preferencias. El esquema ejecutable tiene 79 tablas. La revisión `0004_platform` añade condiciones versionadas, fechas en el historial de suscripciones, permisos de plataforma, el catálogo de soporte y dos índices. Alembic aplica las revisiones pendientes al arrancar el backend. `schema.sql` conserva el DDL de referencia.
 
 ```sh
 docker compose --env-file .env.dev -f compose.yaml -f compose.dev.yaml exec backend alembic current
@@ -42,3 +42,11 @@ La suite de integración comprueba las revisiones en bases temporales de Postgre
 
 ## Cambios de cierre
 ICMP: cinco paquetes, pérdida superior a 30% cuenta como fallo, RTT superior a 200 ms degrada, umbrales configurables. Tickets automáticos con origin SYSTEM, fault_key deduplicada y actor de sistema en historial; edge_rule_tag identifica reglas NAT propias. Tres entornos DEV/TEST/PROD independientes. La suite verificó las migraciones en PostgreSQL 17. La coherencia de actores y la concurrencia de los servicios se verificarán al implementar cada módulo. No duplicar DDL y Alembic.
+
+## Reglas operativas de plataforma
+
+- La versión predeterminada para altas se selecciona explícitamente en Configuración. Editar un plan crea una nueva versión comercial y conserva las anteriores. Desactivar el plan bloquea nuevas asignaciones y no invalida las existentes. El operador debe cambiar primero el plan predeterminado si pretende desactivarlo.
+- El campo histórico `monthly_price` representa el precio del periodo indicado por `billing_period` (mensual o anual). La duración comercial se calcula en días mediante `trial_days`, con NULL para vigencia indefinida. El código TRIAL determina el estado inicial de prueba. Las demás altas empiezan en ACTIVE. Los parámetros comerciales no generan cobros.
+- Suscripciones TRIAL, ACTIVE o GRACE dentro de su ventana dan acceso a las funcionalidades implementadas que contiene su versión. El índice parcial existente conserva una sola suscripción no cancelada por empresa. En la fase actual se fiscaliza el máximo de usuarios activos y se informa la utilización de clientes y dispositivos, cuyos flujos de alta corresponden a etapas posteriores.
+- `core.companies.status=INACTIVE` representa suspensión administrativa. Bloquea el acceso ISP y revoca sus sesiones y enlaces pendientes. Conservar la suscripción y las filas de negocio permite reactivar sin reconstruir información. La conectividad se consulta de forma independiente y distingue ausencia de collector de falta de datos recientes.
+- Los tickets de SKNet se almacenan exclusivamente en `platform.support_*`. El rol ISP accede con SAAS_SUPPORT y permisos de su empresa. La auditoría y el historial no incluyen el cuerpo de las respuestas. Las notas internas de soporte son visibles en SaaS.

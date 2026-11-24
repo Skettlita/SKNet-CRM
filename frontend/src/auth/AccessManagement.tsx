@@ -28,7 +28,7 @@ type Role = {
 }
 
 type Permission = { code: string; description: string }
-type RoleList = { items: Role[]; permissions: Permission[] }
+type RoleList = { items: Role[]; permissions: Permission[]; delegable: string[] }
 
 export function PageHeading({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
   return <div className="page-heading">
@@ -188,14 +188,15 @@ export function UserManagement({ scope, account, changed }: { scope: Scope; acco
 const modules: Record<string, string> = {
   dashboard: "Dashboard", users: "Usuarios", roles: "Roles y permisos", settings: "Configuración",
   system: "Estado del sistema", companies: "Empresas", support: "Soporte",
+  plans: "Planes", subscriptions: "Suscripciones", audit: "Auditoría",
 }
 
-function PermissionMatrix({ catalog, current, account, readOnly }: {
-  catalog: Permission[]; current: string[]; account: Account; readOnly: boolean
+function PermissionMatrix({ catalog, current, delegable, readOnly }: {
+  catalog: Permission[]; current: string[]; delegable: string[]; readOnly: boolean
 }) {
   const grouped = new Map<string, Permission[]>()
   for (const permission of catalog) {
-    if (!current.includes(permission.code) && (readOnly || !account.permissions.includes(permission.code))) continue
+    if (!current.includes(permission.code) && (readOnly || !delegable.includes(permission.code))) continue
     const group = permission.code.split(".")[0]
     grouped.set(group, [...(grouped.get(group) ?? []), permission])
   }
@@ -207,7 +208,7 @@ function PermissionMatrix({ catalog, current, account, readOnly }: {
           {index === 0 && <th rowSpan={permissions.length} scope="rowgroup">{modules[group] ?? group}</th>}
           <td><label htmlFor={`perm-${permission.code}`}>{permission.description}</label></td>
           <td><input id={`perm-${permission.code}`} type="checkbox" name="permissions" value={permission.code}
-            defaultChecked={current.includes(permission.code)} disabled={readOnly || !account.permissions.includes(permission.code)} /></td>
+            defaultChecked={current.includes(permission.code)} disabled={readOnly || !delegable.includes(permission.code)} /></td>
         </tr>)}
       </tbody>)}
     </table>
@@ -249,10 +250,10 @@ export function RoleManagement({ scope, account, changed }: { scope: Scope; acco
             <Field label="Nombre del rol" name="name" defaultValue={role?.name} minLength={2} maxLength={120} required />
             <Field label="Descripción" name="description" defaultValue={role?.description ?? ""} maxLength={240} />
           </div>
-          <PermissionMatrix catalog={result.permissions} current={role?.permissions ?? []} account={account} readOnly={false} />
+          <PermissionMatrix catalog={result.permissions} current={role?.permissions ?? []} delegable={result.delegable} readOnly={false} />
         </ActionForm> : <>
           {role?.description && <p>{role.description}</p>}
-          <PermissionMatrix catalog={result.permissions} current={role?.permissions ?? []} account={account} readOnly />
+          <PermissionMatrix catalog={result.permissions} current={role?.permissions ?? []} delegable={result.delegable} readOnly />
           <div className="form-actions"><Button onClick={() => setSelected(null)}>Cerrar</Button></div>
         </>}
       </div>

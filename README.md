@@ -1,6 +1,6 @@
 # SKNet · CRM y monitoreo para ISP
 
-La fundación DEV incluye una API FastAPI, PostgreSQL 17 con migraciones Alembic, un frontend React y Vite basado en el diseño aprobado y un provisioner que comprueba el acceso a Docker. El entorno DEV incorpora además autenticación, registro ISP y gestión de usuarios y permisos. El estado de la API y PostgreSQL está disponible en el panel SaaS.
+La fundación DEV incluye una API FastAPI, PostgreSQL 17 con migraciones Alembic, un frontend React y Vite basado en el diseño aprobado y un provisioner que comprueba el acceso a Docker. El entorno DEV incorpora además autenticación, registro ISP y gestión de usuarios y permisos. El panel SaaS incluye empresas, planes versionados, suscripciones, soporte, auditoría y un dashboard con datos de PostgreSQL.
 
 ## Requisitos
 
@@ -49,13 +49,22 @@ Entra en [Login SaaS](http://127.0.0.1:5173/admin/login) con el usuario o el cor
 
 ## Comprobación manual
 
-1. En el panel SaaS, abre **Administración → Configuración**. El registro público está apagado al inicializar la base. Habilítalo y guarda. También puedes registrar una empresa desde **Plataforma → Nueva empresa**.
+1. En el panel SaaS, abre **Administración → Configuración**. El registro público está apagado al inicializar la base. Habilítalo y guarda. También puedes registrar una empresa desde **Plataforma → Empresas → Nueva empresa**, aunque el registro público esté apagado.
 2. Abre [Registrar empresa](http://127.0.0.1:5173/signup) y completa el formulario. Entra en [Login ISP](http://127.0.0.1:5173/login) con la cuenta creada. El administrador entra a `/app`. La cuenta ISP no inicia sesión en `/admin/login`.
 3. En la empresa, crea un rol con **Ver el panel** y **Listar usuarios** desde **Roles y permisos**. Crea un empleado desde **Usuarios** y selecciona ese rol. La contraseña temporal se muestra al crearlo y vence en 24 h.
 4. En una ventana privada, entra como empleado y cambia la contraseña temporal. Comprueba que puede listar usuarios de su empresa y que las acciones de edición, alta y administración de roles quedan ocultas.
 5. Usa el menú de usuario para cambiar preferencias o cerrar sesión. Para comprobar persistencia, reinicia DEV y vuelve a entrar. El plan de prueba, las empresas, los roles y los usuarios permanecen en PostgreSQL.
 
-El plan TRIAL inicial cuesta Bs 0, sin vencimiento ni límite de usuarios. Los cambios al precio, duración y máximo de usuarios crean otra versión para registros posteriores. El precio configura las condiciones del plan, sin generar cobros en esta fase.
+El plan TRIAL inicial cuesta Bs 0, sin vencimiento ni límite de usuarios. Los cambios al precio, duración, límites o funcionalidades se guardan como una nueva versión. El registro público y el alta administrativa usan la versión elegida en Configuración. El precio configura las condiciones del plan, sin generar cobros en esta fase.
+
+## Verificación de la administración SaaS
+
+1. En **Plataforma → Planes**, crea un plan con moneda, precio por periodo, duración y límites. Habilita **Usuarios y permisos** y **Soporte de SKNet** según corresponda. Edita sus condiciones y consulta las dos versiones. Los módulos futuros se identifican como no disponibles.
+2. En **Administración → Configuración**, selecciona la versión del plan predeterminado y guarda. Con el registro público apagado, comprueba que [Signup](http://127.0.0.1:5173/signup) está cerrado y que **Empresas → Nueva empresa** sigue disponible. Al habilitarlo, Signup muestra las condiciones y aplica la versión elegida.
+3. En **Empresas**, busca por nombre o NIT, filtra por estado y abre una ficha. Consulta usuarios y utilización con los permisos respectivos. Suspende y reactiva una empresa de prueba. La suspensión bloquea el acceso ISP y conserva la suscripción, el estado de conectividad y los registros.
+4. En **Suscripciones**, abre la asignación inicial, cambia plan o vigencia y consulta el historial. Para iniciar una nueva asignación, cancela primero la anterior. Un límite inferior impide nuevas altas que lo superen, con los registros ya existentes disponibles.
+5. Desde el [panel ISP](http://127.0.0.1:5173/app), abre **Contactar SKNet** y envía una solicitud. En el panel SaaS, abre **Administración → Soporte**, filtra, asigna un responsable y responde. Comprueba el historial y que una nota interna aparece solo en SaaS.
+6. Abre **Dashboard** y **Auditoría** con el operador autorizado. Los indicadores se calculan a partir de los registros existentes. La auditoría permite consultar cambios de empresa, cuenta, rol, plan, suscripción, configuración y soporte.
 
 ## Recuperación
 
@@ -96,4 +105,4 @@ Para incluir las pruebas de migración, autenticación y aislamiento, configura 
 
 `compose.yaml` se combina con `compose.dev.yaml`, `compose.test.yaml` o `compose.prod.yaml`. Cada overlay define un nombre de proyecto, redes y volúmenes independientes por proyecto y un puerto web distinto. Usa un archivo de variables separado por ambiente. TEST y PROD quedan preparados para validación posterior. Consulta [entornos](docs/ENVIRONMENTS.md) y [estado de implementación](docs/IMPLEMENTATION_STATUS.md).
 
-La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. La siguiente fase incorpora CRUD de plataforma y CRM básico.
+La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. El CRM empresarial se aborda en una etapa posterior.

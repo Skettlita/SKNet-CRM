@@ -176,7 +176,7 @@ def scoped_router(realm):
                 resettable = False
                 if can_manage:
                     effective = {code for role_id in user["role_ids"] for code in roles[role_id]["permissions"]}
-                    subset = effective.issubset(actor.permissions)
+                    subset = effective.issubset(actor.grants)
                     editable = subset and "users.write" in actor.permissions
                     resettable = subset and "users.reset" in actor.permissions and user["id"] != actor.id and user["active"]
                 entry = dict(user)
@@ -260,10 +260,11 @@ def scoped_router(realm):
             result = accounts.role_catalog(db, realm, actor.company)
             return {
                 "items": [{**role,
-                           "assignable": set(role["permissions"]).issubset(actor.permissions),
-                           "editable": "roles.write" in actor.permissions and set(role["permissions"]).issubset(actor.permissions)}
+                           "assignable": set(role["permissions"]).issubset(actor.grants),
+                           "editable": "roles.write" in actor.permissions and set(role["permissions"]).issubset(actor.grants)}
                           for role in result.values()],
                 "permissions": accounts.permissions_catalog(db, realm),
+                "delegable": sorted(actor.grants),
             }
 
     def save_role(data, request, role_id=None):
@@ -310,7 +311,12 @@ admin = scoped_router(SAAS)
 def signup_status(request: Request):
     with database(request) as db:
         config = onboarding.settings(db)
-        return {"enabled": config["public_signup_enabled"] and config["active"],
+        enabled = config["public_signup_enabled"] and config["active"]
+        return {"enabled": enabled, "plan": ({
+                    "version_id": config["id"], "name": config["name"], "price": config["monthly_price"],
+                    "currency": config["currency"], "billing_period": config["billing_period"],
+                    "duration_days": config["trial_days"],
+                } if enabled else None),
                 "terms_version": "2026-11-24"}
 
 

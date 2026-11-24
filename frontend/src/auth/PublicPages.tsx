@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import type { ReactNode } from "react"
 
 import { Brand } from "../shared/AppShell"
+import { amountText } from "../platform/shared"
 import { api, homePath, loginPath } from "./api"
 import type { Scope } from "./api"
 import { ActionForm, Field, PasswordFields, RegistrationFields } from "./forms"
@@ -38,12 +39,15 @@ export function LoginPage({ scope }: { scope: Scope }) {
   </AccessCard>
 }
 
+type SignupPlan = { version_id: string; name: string; price: string | number; currency: string; billing_period: string; duration_days: number | null }
+
 export function SignupPage() {
   const [available, setAvailable] = useState<boolean | null>(null)
+  const [plan, setPlan] = useState<SignupPlan | null>(null)
   const [error, setError] = useState(false)
   const [complete, setComplete] = useState(false)
   useEffect(() => {
-    api<{ enabled: boolean }>("isp", "/signup").then((result) => setAvailable(result.enabled)).catch(() => setError(true))
+    api<{ enabled: boolean; plan: SignupPlan | null }>("isp", "/signup").then((result) => { setAvailable(result.enabled); setPlan(result.plan) }).catch(() => setError(true))
   }, [])
 
   return <AccessCard title="Registrar empresa" description="Crea la cuenta del administrador de tu empresa.">
@@ -52,13 +56,15 @@ export function SignupPage() {
       : complete ? <p role="status">Empresa registrada. Ya puedes iniciar sesión.</p>
       : !available ? <p role="status">El registro público está deshabilitado.</p>
       : <ActionForm label="Registrar empresa" submit={async (fields) => {
-          await api("isp", "/signup", "POST", { ...Object.fromEntries(fields), accept_terms: fields.has("accept_terms") })
+          await api("isp", "/signup", "POST", { ...Object.fromEntries(fields), accept_terms: fields.has("accept_terms"), expected_plan_version_id: plan?.version_id })
           setComplete(true)
         }}>
+          {plan && <p className="registration-terms"><strong>{plan.name}</strong> · {amountText(plan.price, plan.currency)}
+            {" / "}{plan.billing_period === "YEARLY" ? "año" : "mes"} · {plan.duration_days ? plan.duration_days + " días de vigencia" : "Sin vencimiento"}</p>}
           <RegistrationFields />
           <details className="registration-terms">
             <summary>Condiciones de registro</summary>
-            <p>Declaro que puedo registrar a la empresa y que los datos aportados son correctos. La cuenta se crea con el plan de prueba configurado en SKNet. La empresa administra el acceso de su personal.</p>
+            <p>Declaro que puedo registrar a la empresa y que los datos aportados son correctos. La cuenta se crea con el plan mostrado en este formulario. La empresa administra el acceso de su personal.</p>
           </details>
           <label className="checkbox-label"><input type="checkbox" name="accept_terms" required /> Acepto las condiciones de registro.</label>
         </ActionForm>}

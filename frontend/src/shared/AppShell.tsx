@@ -2,7 +2,7 @@ import { useState } from "react"
 import type { ReactNode } from "react"
 import {
   Activity, Building2, ChevronDown, ChevronLeft, ChevronRight, KeyRound, LayoutDashboard,
-  LifeBuoy, LogOut, Menu, Network, Settings, ShieldCheck, SlidersHorizontal, User, Users, X,
+  ClipboardList, CreditCard, History, LifeBuoy, LogOut, Menu, Network, Settings, ShieldCheck, SlidersHorizontal, User, Users, X,
 } from "lucide-react"
 
 import { api, homePath, loginPath, message } from "../auth/api"
@@ -20,13 +20,24 @@ export function Brand({ compact = false }: { compact?: boolean }) {
   )
 }
 
-const groups = [
+const groups: { label: string; items: { title: string; route: string; icon: typeof Activity; permission: string; scope?: Scope; fallback?: string }[] }[] = [
   { label: "General", items: [{ title: "Dashboard", route: "", icon: LayoutDashboard, permission: "dashboard.read" }] },
-  { label: "Plataforma", items: [{ title: "Nueva empresa", route: "/companies/new", icon: Building2, permission: "companies.create" }] },
+  { label: "Plataforma", items: [
+    { title: "Empresas", route: "/companies", icon: Building2, permission: "companies.read", scope: "admin" },
+    { title: "Nueva empresa", route: "/companies/new", icon: Building2, permission: "companies.create", scope: "admin", fallback: "companies.read" },
+    { title: "Planes", route: "/plans", icon: CreditCard, permission: "plans.read", scope: "admin" },
+    { title: "Suscripciones", route: "/subscriptions", icon: ClipboardList, permission: "subscriptions.read", scope: "admin" },
+  ] },
+  { label: "Soporte", items: [
+    { title: "Contactar SKNet", route: "/support", icon: LifeBuoy, permission: "support.read", scope: "isp" },
+    { title: "Contactar SKNet", route: "/support/new", icon: LifeBuoy, permission: "support.create", scope: "isp", fallback: "support.read" },
+  ] },
   { label: "Infraestructura", items: [{ title: "Estado del sistema", route: "/system", icon: Activity, permission: "system.read" }] },
   { label: "Administración", items: [
     { title: "Usuarios", route: "/users", icon: Users, permission: "users.read" },
     { title: "Roles y permisos", route: "/roles", icon: ShieldCheck, permission: "roles.read" },
+    { title: "Soporte", route: "/support", icon: LifeBuoy, permission: "support.read", scope: "admin" },
+    { title: "Auditoría", route: "/audit", icon: History, permission: "audit.read", scope: "admin" },
     { title: "Configuración", route: "/settings", icon: Settings, permission: "settings.read" },
     { title: "Recuperar acceso ISP", route: "/support/reset", icon: LifeBuoy, permission: "support.reset" },
   ] },
@@ -68,7 +79,8 @@ export function AppShell({ children, account, scope, title }: {
         </div>
         <nav id="main-navigation" className="side-nav" aria-label="Navegación principal">
           {groups.map(({ label, items }, index) => {
-            const available = items.filter(({ permission }) => account.permissions.includes(permission))
+            const available = items.filter((item) => (!item.scope || item.scope === scope) &&
+              account.permissions.includes(item.permission) && (!item.fallback || !account.permissions.includes(item.fallback)))
             if (available.length === 0) return null
             const expanded = collapsed || !closed.includes(label)
             return <div className="nav-group" key={label}>
@@ -80,7 +92,8 @@ export function AppShell({ children, account, scope, title }: {
               <div id={`nav-group-${index}`} hidden={!expanded}>
                 {available.map(({ title, icon: Icon, route }) => {
                   const href = base + route
-                  const current = window.location.pathname === href
+                  const path = window.location.pathname.replace(/\/$/, "")
+                  const current = path === href || (route !== "" && path.startsWith(href + "/") && path !== base + "/support/reset")
                   return <a key={href} className={`nav-item ${current ? "active" : ""}`} href={href}
                     aria-current={current ? "page" : undefined} aria-label={title} title={collapsed ? title : undefined}>
                     <Icon size={16} strokeWidth={1.8} />{!collapsed && <span>{title}</span>}

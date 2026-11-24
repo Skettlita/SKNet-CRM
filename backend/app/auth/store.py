@@ -109,7 +109,11 @@ def subscription(db, company):
                EXISTS (
                    SELECT 1 FROM platform.plan_features pf JOIN platform.features f ON f.id = pf.feature_id
                    WHERE pf.plan_version_id = v.id AND f.code = 'ACCESS' AND f.implemented
-               ) AS access_enabled
+               ) AS access_enabled,
+               ARRAY(
+                   SELECT f.code FROM platform.plan_features pf JOIN platform.features f ON f.id = pf.feature_id
+                   WHERE pf.plan_version_id = v.id AND f.implemented ORDER BY f.code
+               ) AS enabled_features
         FROM platform.subscriptions s JOIN platform.plan_versions v ON v.id = s.plan_version_id
         JOIN platform.plans p ON p.id = v.plan_id
         WHERE s.company_id = :company AND s.status <> 'CANCELLED'
@@ -123,6 +127,7 @@ class Principal:
     permissions: set[str]
     plan: object
     session_id: UUID
+    grants: set[str]
 
     @property
     def company(self):

@@ -97,6 +97,12 @@ def principal(db, request, realm) -> Principal:
     if not identity_active(user) or temporary_expired(user):
         raise HTTPException(401, "La cuenta o la sesión no está disponible.")
     plan = subscription(db, user["company_id"]) if realm.isp else None
-    enabled = not realm.isp or bool(plan and plan["current"] and plan["access_enabled"])
-    permissions = person_permissions(db, realm, user["person_id"]) if enabled and not user["must_change_password"] else set()
-    return Principal(realm, user, permissions, plan, session["id"])
+    grants = person_permissions(db, realm, user["person_id"]) if not user["must_change_password"] else set()
+    permissions = grants
+    if realm.isp:
+        enabled = set(plan["enabled_features"]) if plan and plan["current"] else set()
+        permissions = {
+            code for code in grants
+            if ("SAAS_SUPPORT" if code.startswith("support.") else "ACCESS") in enabled
+        }
+    return Principal(realm, user, permissions, plan, session["id"], grants)

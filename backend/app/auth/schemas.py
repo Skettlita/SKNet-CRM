@@ -51,6 +51,7 @@ class CompanyRegistration(Identity, PasswordPair):
 
 class Signup(CompanyRegistration):
     accept_terms: bool
+    expected_plan_version_id: UUID | None = None
 
 
 class UserWrite(Identity):
@@ -93,7 +94,8 @@ class ProfileWrite(Input):
 
 class SettingsWrite(Input):
     public_signup_enabled: bool
-    monthly_price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    default_plan_version_id: UUID | None = None
+    monthly_price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     trial_days: int | None = Field(default=None, ge=1, le=3650)
     max_users: int | None = Field(default=None, ge=1, le=100000)
 

@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth.routes import admin, isp
+from app.platform.routes import admin as platform_admin, isp as platform_isp
 from app.db import create_database_engine, create_session_factory
 
 
@@ -26,9 +27,11 @@ async def lifespan(app: FastAPI):
         engine.dispose()
 
 
-app = FastAPI(title="SKNet API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="SKNet API", version="0.3.0", lifespan=lifespan)
 app.include_router(isp)
 app.include_router(admin)
+app.include_router(platform_admin)
+app.include_router(platform_isp)
 
 
 @app.middleware("http")

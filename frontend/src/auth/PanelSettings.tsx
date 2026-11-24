@@ -1,80 +1,78 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 
 import { Button } from "../shared/Button"
 import { PageHeading, TemporaryPassword } from "./AccessManagement"
-import { api, message } from "./api"
+import { api } from "./api"
 import type { Account, Scope } from "./api"
 import { ActionForm, Field, RegistrationFields } from "./forms"
 import { ChangePasswordPage } from "./PublicPages"
 
+import { DataView, Select, amountText, useData } from "../platform/shared"
+import type { PlanChoice } from "../platform/shared"
+
 type Settings = {
-  public_signup_enabled: boolean
-  monthly_price: number
-  trial_days: number | null
-  max_users: number | null
-  version: number
+  id: string; name: string; public_signup_enabled: boolean; currency: string; billing_period: string
+  monthly_price: number | string; trial_days: number | null; max_users: number | null; version: number
 }
 
 export function SettingsPage({ account }: { account: Account }) {
-  const [settings, setSettings] = useState<Settings | null>(null)
-  const [error, setError] = useState("")
-  const [saved, setSaved] = useState(false)
+  const [updated, setUpdated] = useState<Settings>()
+  const current = useData<Settings>("admin", "/settings")
   const editable = account.permissions.includes("settings.write")
-
-  useEffect(() => {
-    api<Settings>("admin", "/settings").then(setSettings).catch((error) => setError(message(error)))
-  }, [])
+  const options = useData<PlanChoice[]>("admin", editable ? "/plans/choices" : null)
 
   return <>
-    <PageHeading title="Configuración" description="Registro público y condiciones del plan de prueba para nuevas empresas." />
+    <PageHeading title="Configuración" description="Registro público y plan predeterminado para las nuevas empresas." />
     <section className="table-panel">
-      <div className="panel-header"><h2>Plan de prueba</h2></div>
+      <div className="panel-header"><h2>Registro de empresas ISP</h2></div>
       <div className="panel-body">
-        {error ? <p className="form-error" role="alert">{error}</p>
-          : !settings ? <p role="status">Cargando configuración…</p>
-          : editable ? <ActionForm label="Guardar configuración" submit={async (fields) => {
-              setSaved(false)
-              const trial = fields.get("trial_days")
-              const limit = fields.get("max_users")
-              const updated = await api<Settings>("admin", "/settings", "PUT", {
-                public_signup_enabled: fields.has("public_signup_enabled"),
-                monthly_price: fields.get("monthly_price"),
-                trial_days: trial ? Number(trial) : null,
-                max_users: limit ? Number(limit) : null,
-              })
-              setSettings(updated)
-              setSaved(true)
-            }}>
-              <label className="checkbox-label"><input type="checkbox" name="public_signup_enabled"
-                defaultChecked={settings.public_signup_enabled} /> Habilitar registro público ISP</label>
-              <div className="form-grid">
-                <Field label="Precio mensual (Bs)" name="monthly_price" type="number" min={0} step="0.01" defaultValue={settings.monthly_price} required />
-                <Field label="Duración de prueba en días (opcional)" name="trial_days" type="number" min={1} max={3650} defaultValue={settings.trial_days ?? ""} />
-                <Field label="Máximo de usuarios activos (opcional)" name="max_users" type="number" min={1} max={100000} defaultValue={settings.max_users ?? ""} />
-              </div>
-              <p className="description">Deja la duración o el máximo en blanco para un plan sin vencimiento o sin límite, respectivamente.</p>
-              {saved && <p role="status" className="form-success">Configuración guardada. Versión del plan {settings.version}.</p>}
-            </ActionForm> : <dl className="profile-details">
+        <DataView state={current}>{(loaded) => {
+          const settings = updated ?? loaded
+          return <>
+            {editable && <DataView state={options}>{(plans) =>
+              <ActionForm label="Guardar configuración" submit={async (fields) => {
+                setUpdated(await api<Settings>("admin", "/settings", "PUT", {
+                  public_signup_enabled: fields.has("public_signup_enabled"),
+                  default_plan_version_id: fields.get("default_plan_version_id"),
+                }))
+              }}>
+                <label className="checkbox-label"><input type="checkbox" name="public_signup_enabled"
+                  defaultChecked={settings.public_signup_enabled} /> Habilitar registro público ISP</label>
+                <div className="form-grid">
+                  <Select label="Plan predeterminado" name="default_plan_version_id" defaultValue={settings.id} required>
+                    {!plans.some((plan) => plan.version_id === settings.id) &&
+                      <option disabled value={settings.id}>{settings.name} · v{settings.version} (desactivado)</option>}
+                    {plans.map((plan) => <option key={plan.version_id} value={plan.version_id}>{plan.name} · v{plan.version}</option>)}
+                  </Select>
+                </div>
+                {updated && <p role="status" className="form-success">Configuración guardada.</p>}
+              </ActionForm>}
+            </DataView>}
+            <dl className="profile-details platform-summary">
               <dt>Registro público</dt><dd>{settings.public_signup_enabled ? "Habilitado" : "Deshabilitado"}</dd>
-              <dt>Precio mensual</dt><dd>Bs {settings.monthly_price}</dd>
-              <dt>Duración</dt><dd>{settings.trial_days === null ? "Sin vencimiento" : `${settings.trial_days} días`}</dd>
+              <dt>Plan predeterminado</dt><dd>{settings.name} · v{settings.version}</dd>
+              <dt>Precio</dt><dd>{amountText(settings.monthly_price, settings.currency)} · {settings.billing_period === "YEARLY" ? "Anual" : "Mensual"}</dd>
+              <dt>Duración</dt><dd>{settings.trial_days === null ? "Sin vencimiento" : settings.trial_days + " días"}</dd>
               <dt>Usuarios activos</dt><dd>{settings.max_users ?? "Sin límite"}</dd>
-            </dl>}
+            </dl>
+          </>
+        }}</DataView>
       </div>
     </section>
   </>
 }
 
-export function ManualRegistration() {
-  const [completed, setCompleted] = useState(false)
+export function ManualRegistration({ account }: { account: Account }) {
+  const [completed, setCompleted] = useState("")
   return <>
+    {account.permissions.includes("companies.read") && <a className="platform-link back-link" href="/admin/companies">Volver a empresas</a>}
     <PageHeading title="Nueva empresa" description="Da de alta una empresa y su primer administrador ISP." />
     <section className="table-panel"><div className="panel-body">
       {completed ? <><p className="form-success" role="status">Empresa registrada.</p>
-        <Button onClick={() => setCompleted(false)}>Registrar otra empresa</Button></>
+        <div className="row-actions"><Button onClick={() => setCompleted("")}>Registrar otra empresa</Button>{account.permissions.includes("companies.read") && <a className="button button-outline" href={"/admin/companies/" + completed}>Consultar empresa</a>}</div></>
         : <ActionForm label="Registrar empresa" submit={async (fields) => {
-          await api("admin", "/companies", "POST", Object.fromEntries(fields))
-          setCompleted(true)
+          const result = await api<{ company_id: string }>("admin", "/companies", "POST", Object.fromEntries(fields))
+          setCompleted(result.company_id)
         }}><div className="form-grid"><RegistrationFields /></div></ActionForm>}
     </div></section>
   </>
