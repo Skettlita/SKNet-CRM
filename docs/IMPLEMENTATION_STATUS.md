@@ -88,3 +88,27 @@ La plataforma calcula límites de clientes y dispositivos y muestra su utilizaci
 | Persistencia después de reinicios | La suite volvió a iniciar el backend y pudo consultar el dispositivo. Se reinició físicamente PostgreSQL temporal y la misma sesión volvió a consultar el dashboard y el intervalo ICMP editado en navegador. |
 
 El collector, el aprovisionamiento, las mediciones de red y los módulos posteriores quedan pendientes. Los planes personalizados requieren seleccionar CRM o ICMP_CONFIG y asignar la nueva versión a la empresa, según corresponda.
+
+## Fase 5 · Provisioner, collectors y WireGuard en DEV
+
+- El backend guarda trabajos, leases, reservas y diagnósticos en PostgreSQL. Las peticiones simultáneas de un ISP reutilizan su collector. El provisioner Python usa Docker SDK para crear una red `/30`, un collector Alpine y la publicación UDP. El túnel recibe una `/31`. Una reserva se libera solo después del retiro verificado de los recursos que la utilizan.
+- El backend ofrece REST interno por sockets Unix distintos para provisioner y collectors. Cada collector tiene token revocable, clave privada persistente, red independiente y solo las capacidades `NET_ADMIN` y `NET_RAW`. El heartbeat predeterminado es de 10 s y vence a los 30 s. La comprobación VPN exige handshake reciente e ICMP a la IP WireGuard del peer.
+- **ISP** cuenta con el asistente **Red → Conectividad**, seguimiento de trabajos, referencia de soporte, vista previa de RouterOS en DEV y configuración de clave pública y CIDR. El script descargable está condicionado a una infraestructura verificada en modo real. **SaaS** dispone de collectors, VPN, pools, trabajos, estado del provisioner y tickets deduplicados. La apariencia conserva los componentes del panel existente.
+- **Migración `0006_connectivity`** aditiva, sin tablas nuevas. Añade datos de configuración, leasing, inventario y diagnóstico, y registra `CONNECTIVITY` y los permisos de ambos paneles. DEV conserva una empresa, dos usuarios, cero clientes CRM y cero collectors en su base habitual. Las empresas y collectors del ensayo se crearon en una instalación DEV aislada.
+
+### Evidencia de la fase 5
+
+| Comprobación | Resultado |
+|---|---|
+| PostgreSQL 17 temporal | 21 pruebas aprobadas, incluidas 16 de regresión. Cubren concurrencia, reservas `/30` y `/31`, selección y agotamiento UDP, tickets, permisos de plan, autenticación y rotación, leases, entrega condicionada del script y manejo de estados. Se mantiene el aviso de deprecación Starlette/AnyIO. |
+| Docker Desktop y WSL2 | Se construyeron las imágenes y se aprovisionaron dos collectors. Se asignaron subredes y puertos distintos pese a redes remotas iguales. Se bloqueó ICMP directo entre collectors. Al reiniciar backend, provisioner y ambos collectors, se conservaron IDs, claves y reservas y volvió el heartbeat. Kernel comprobado `6.18.58.1-microsoft-standard-WSL2`. |
+| WireGuard con peer Linux | En una red Docker temporal, se verificaron setup de la clave pública desde el backend, handshake real y ping por `wg0`. La conexión se mantuvo marcada como simulación por su adaptador NAT. |
+| Adaptador de borde | DEV usó simulación. Un pool ocupado por una red Docker activó el manejo de agotamiento y los tickets. Se eligió un pool libre para el ensayo aislado y se reintentó con los mismos collectors. Las operaciones REST de RouterOS se cubren con respuestas en memoria, incluyendo regla propia, colisión, firewall y retiro. |
+| Interfaz y build | TypeScript y Vite compilados. Edge verificó el asistente ISP, vista previa con etiqueta de simulación y pantallas SaaS de collectors, VPN, pools, trabajos, estado y soporte. |
+| DEV habitual | Cuatro servicios saludables, migración `0006_connectivity (head)` y API con PostgreSQL disponible. |
+
+### Límites y validaciones pendientes
+
+- Se debe probar el flujo de extremo a extremo con RouterOS 7 y Ubuntu TEST, incluyendo TLS, permisos, DST-NAT, firewall, persistencia tras reiniciar Docker Engine y rutas privadas a ambos lados. El ensayo de WSL2 validó WireGuard dentro de Docker. La recepción desde una WAN y el tránsito por DST-NAT quedan pendientes. [Preparación de Ubuntu TEST](PROVISIONING.md#preparación-futura-para-ubuntu-test).
+- Un puerto ocupado por un proceso que Docker no inventaría se detecta al publicar el puerto. El trabajo requiere reconciliación tras resolver el conflicto y conserva la reserva mientras el estado de infraestructura sea incierto. Las reglas de borde verificadas en memoria no cubren configuraciones específicas de GNS3 ni de hardware.
+- El monitoreo de dispositivos queda fuera de esta fase. Los volúmenes de la prueba aislada se conservaron y sus contenedores de prueba se detuvieron.

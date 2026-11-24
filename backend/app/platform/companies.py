@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from app.auth.store import audit, execute, row, rows
+from app.connectivity.config import stale_seconds
 
 
 FIELDS = """
@@ -9,9 +10,10 @@ FIELDS = """
     collector.provisioning_status,
     CASE WHEN collector.id IS NULL THEN 'UNCONFIGURED'
          WHEN NOT collector.enabled OR (vpn.id IS NOT NULL AND NOT vpn.enabled) THEN 'DISABLED'
+         WHEN collector.simulated THEN 'SIMULATED'
          WHEN collector.last_heartbeat_at IS NULL THEN 'UNKNOWN'
-         WHEN collector.last_heartbeat_at <= now() - interval '30 seconds' THEN 'STALE'
-         WHEN vpn.last_probe_at IS NULL OR vpn.last_probe_at <= now() - interval '30 seconds' THEN 'UNKNOWN'
+         WHEN collector.last_heartbeat_at <= now() - make_interval(secs=>:stale) THEN 'STALE'
+         WHEN vpn.last_probe_at IS NULL OR vpn.last_probe_at <= now() - make_interval(secs=>:stale) THEN 'UNKNOWN'
          ELSE vpn.connection_status END AS connectivity
 """
 JOIN = """
@@ -34,11 +36,11 @@ def list_companies(db, search, status, sort, direction, offset, limit):
         WHERE (CAST(:status AS text) IS NULL OR c.status = :status)
           AND strpos(lower(concat_ws(' ', c.name,c.tax_id,c.email,c.phone)),lower(:search)) > 0
         ORDER BY {order} {descending}, c.id OFFSET :offset LIMIT :limit
-    """, search=search, status=status, offset=offset, limit=limit)
+    """, search=search, status=status, offset=offset, limit=limit, stale=stale_seconds())
 
 
 def company(db, company_id):
-    entry = row(db, f"SELECT {FIELDS} {JOIN} WHERE c.id = :id", id=company_id)
+    entry = row(db, f"SELECT {FIELDS} {JOIN} WHERE c.id = :id", id=company_id, stale=stale_seconds())
     if entry is None:
         raise HTTPException(404, "Empresa no encontrada.")
     return entry

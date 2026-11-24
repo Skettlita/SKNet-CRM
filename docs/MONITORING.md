@@ -39,7 +39,10 @@ La salud de WireGuard se evalúa con handshake como evidencia auxiliar y ping ac
 - GET /api/v1/collector/config: equipos habilitados y configuración vigente, con IDs y revisiones.
 - POST /api/v1/collector/heartbeat: señal de vida.
 - POST /api/v1/collector/connectivity: estado de túnel y prueba activa.
+- POST /api/v1/collector/diagnostics: diagnóstico de conectividad o de configuración WireGuard.
 - POST /api/v1/collector/results: lote de checks con UUID de medición generado en collector, device_id, revisión, timestamp UTC, resultado y métricas.
+
+En la fase 5, `config` entrega la configuración del túnel y `results` valida la credencial y responde 501. El scheduler de dispositivos y la recepción de mediciones se incorporan en la fase de monitoreo.
 - Token por collector; el backend deduce empresa e identidad desde el token y comprueba asignación de cada dispositivo. Nunca confiar en company_id remitido por el cliente.
 - Guardar en icmp_checks; actualizar device_status e incidents en una transacción, bloqueando estado por dispositivo. Idempotencia por (collector_id,measurement_id). Reenvíos duplicados no modifican contadores ni crean incidentes adicionales. Resultados antiguos o de revisión distinta no modifican el estado actual; pueden conservarse como histórico si son válidos y autorizados. Incrementar config_revision del dispositivo cuando cambie IP, collector o perfil; invalidar contadores/estado actual. Cerrar incidentes por cambio de configuración o retiro con motivo no equivalente a recuperación.
 - Fecha de inicio del incidente: primer fallo de la racha que confirma DOWN; detected_at: confirmación. Fin: confirmación de recuperación; no inferir duración exacta durante períodos sin visibilidad. Registrar transiciones en status_events. Alertas internas de transición, sin repetir cada check; notificaciones externas después.

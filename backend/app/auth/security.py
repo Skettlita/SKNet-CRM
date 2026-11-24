@@ -102,7 +102,7 @@ def principal(db, request, realm) -> Principal:
     if realm.isp:
         enabled = set(plan["enabled_features"]) if plan and plan["current"] else set()
         feature_by_module = {
-            "support": "SAAS_SUPPORT", "icmp": "ICMP_CONFIG",
+            "support": "SAAS_SUPPORT", "icmp": "ICMP_CONFIG", "connectivity": "CONNECTIVITY",
             "clients": "CRM", "sites": "CRM", "internet_plans": "CRM", "services": "CRM",
             "devices": "CRM", "infrastructure": "CRM", "crm_history": "CRM",
         }

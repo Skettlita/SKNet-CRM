@@ -35,7 +35,7 @@ docker compose --env-file .env.dev -f compose.yaml -f compose.dev.yaml ps
 curl --fail http://127.0.0.1:5173/api/v1/health
 ```
 
-Abre [Login ISP](http://127.0.0.1:5173/login) o [Login SaaS](http://127.0.0.1:5173/admin/login). Si cambiaste `WEB_PORT`, ajusta el puerto también en la URL de verificación. El frontend reenvía `/api` al backend y PostgreSQL permanece en una red privada. El provisioner comprueba Docker mediante el socket y espera la fase de aprovisionamiento.
+Abre [Login ISP](http://127.0.0.1:5173/login) o [Login SaaS](http://127.0.0.1:5173/admin/login). Si cambiaste `WEB_PORT`, ajusta el puerto también en la URL de verificación. El frontend reenvía `/api` al backend y PostgreSQL permanece en una red privada. El provisioner comprueba Docker y procesa las solicitudes de conectividad en segundo plano.
 
 ## Crear el primer administrador SaaS
 
@@ -95,6 +95,28 @@ docker compose --env-file .env.dev -f compose.yaml -f compose.dev.yaml stop
 ```
 
 El volumen PostgreSQL conserva los datos. La contraseña de `.env.dev` se usa al inicializar el volumen. Si necesitas rotarla después, actualiza la credencial en PostgreSQL y su configuración de forma coordinada. El esquema de [referencia](database/reference/schema.sql) sirve para diseño y revisión.
+
+## Verificar el provisioner en DEV
+
+Construye la imagen del collector en el mismo Docker Engine donde corre DEV. El provisioner reutiliza esta imagen para todos los ISP.
+
+```sh
+docker build -t sknet-collector:dev monitoring/collector
+docker compose --env-file .env.dev -f compose.yaml -f compose.dev.yaml up -d --build --wait
+docker compose --env-file .env.dev -f compose.yaml -f compose.dev.yaml exec provisioner python -m provisioner --check
+docker compose --env-file .env.dev -f compose.yaml -f compose.dev.yaml logs --tail 80 provisioner
+docker ps --filter label=sknet.installation=sknet-dev
+```
+
+1. Una cuenta ISP con la funcionalidad `CONNECTIVITY` y permisos de lectura y escritura abre **Red → Conectividad → Conectar mi red**. Ingresa una o más redes privadas CIDR y pulsa **Generar script**. El progreso se actualiza automáticamente.
+2. En **Infraestructura** del panel SaaS, consulta **Collectors**, **Conectividad VPN**, **Recursos de red**, **Trabajos de aprovisionamiento**, **Estado del sistema** y **Tickets automáticos**. Un segundo envío de la misma empresa debe mostrar el mismo collector. Un segundo ISP puede declarar los mismos CIDR y debe recibir otra reserva.
+3. Con la NAT simulada de DEV, el panel ofrece **Consultar vista previa** marcada **NO EJECUTAR**. Sirve para verificar IP, clave pública y puerto asignados. Si una red de Docker cubre el pool completo, elige un CIDR libre mediante `SKNET_DOCKER_POOL` en `.env.dev` antes de reservar recursos y vuelve a levantar el backend. Inventaría las redes Docker y las redes de tránsito por separado.
+
+### Conectar un MikroTik en una instalación con RouterOS habilitado
+
+Tras una validación real de Docker, WireGuard y NAT, la misma pantalla ofrece **Consultar script**, **Copiar** y **Descargar .rsc**. Revisa la plantilla con la persona responsable del router y ejecútala en RouterOS 7. Limita el acceso a ICMP de la IP de túnel de SKNet y el forwarding y retorno a los CIDR de gestión autorizados. Pega únicamente la **clave pública** que imprime el router. La VPN se muestra conectada después de un handshake reciente y una respuesta ICMP desde la IP del MikroTik en el túnel. Usa **Actualizar clave pública o redes** para cambiar el router o las redes.
+
+Consulta las condiciones pendientes para Ubuntu TEST en [PROVISIONING.md](docs/PROVISIONING.md).
 
 ## Pruebas locales
 

@@ -35,6 +35,7 @@ const groups: { label: string; items: { title: string; route: string; icon: type
     { title: "Sitios", route: "/sites", icon: MapPin, permission: "sites.read", scope: "isp" },
   ] },
   { label: "Red", items: [
+    { title: "Conectividad", route: "/connectivity", icon: Network, permission: "connectivity.read", scope: "isp" },
     { title: "Dispositivos", route: "/devices", icon: Cpu, permission: "devices.read", scope: "isp" },
     { title: "Infraestructura", route: "/infrastructure", icon: RadioTower, permission: "infrastructure.read", scope: "isp" },
   ] },
@@ -42,7 +43,14 @@ const groups: { label: string; items: { title: string; route: string; icon: type
     { title: "Contactar SKNet", route: "/support", icon: LifeBuoy, permission: "support.read", scope: "isp" },
     { title: "Contactar SKNet", route: "/support/new", icon: LifeBuoy, permission: "support.create", scope: "isp", fallback: "support.read" },
   ] },
-  { label: "Infraestructura", items: [{ title: "Estado del sistema", route: "/system", icon: Activity, permission: "system.read" }] },
+  { label: "Infraestructura", items: [
+    { title: "Estado del sistema", route: "/system", icon: Activity, permission: "system.read" },
+    { title: "Collectors", route: "/collectors", icon: Cpu, permission: "connectivity.read", scope: "admin" },
+    { title: "Conectividad VPN", route: "/vpn", icon: Cable, permission: "connectivity.read", scope: "admin" },
+    { title: "Recursos de red", route: "/network-pools", icon: Network, permission: "connectivity.read", scope: "admin" },
+    { title: "Trabajos de aprovisionamiento", route: "/provisioning-jobs", icon: ClipboardList, permission: "connectivity.read", scope: "admin" },
+    { title: "Tickets automáticos", route: "/automatic-tickets", icon: LifeBuoy, permission: "support.read", scope: "admin" },
+  ] },
   { label: "Administración", items: [
     { title: "Usuarios", route: "/users", icon: Users, permission: "users.read" },
     { title: "Roles y permisos", route: "/roles", icon: ShieldCheck, permission: "roles.read" },

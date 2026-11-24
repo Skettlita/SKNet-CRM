@@ -94,13 +94,17 @@ const statusNames: Record<string, string> = {
   DISABLED: "Deshabilitada", ENABLED: "Habilitado", PLAN_OFF: "Desactivado",
   OPEN: "Abierto", ASSIGNED: "Asignado", IN_PROGRESS: "En curso", RESOLVED: "Resuelto",
   LOW: "Baja", NORMAL: "Normal", HIGH: "Alta", CRITICAL: "Crítica",
+  PROVISIONING: "Aprovisionando", WAITING_PUBLIC_KEY: "Esperando clave pública",
+  WAITING_HANDSHAKE: "Esperando conectividad", READY: "Operativo", ERROR: "Error",
+  RUNNING: "En ejecución", EXITED: "Detenido", MISSING: "Sin contenedor", CREATED: "Creado",
+  SUCCEEDED: "Completado", FAILED: "Fallido", SIMULATED: "Simulación",
 }
 export const statusName = (value: string) => statusNames[value] ?? value
 
 export function Status({ value }: { value: string }) {
-  const tone = ["ACTIVE", "CONNECTED", "ENABLED", "RESOLVED"].includes(value) ? "up"
-    : ["INACTIVE", "SUSPENDED", "DISCONNECTED", "CRITICAL"].includes(value) ? "down"
-    : ["TRIAL", "GRACE", "STALE", "HIGH"].includes(value) ? "warn" : "muted"
+  const tone = ["ACTIVE", "CONNECTED", "ENABLED", "RESOLVED", "RUNNING", "READY", "SUCCEEDED"].includes(value) ? "up"
+    : ["INACTIVE", "SUSPENDED", "DISCONNECTED", "CRITICAL", "ERROR", "FAILED"].includes(value) ? "down"
+    : ["TRIAL", "GRACE", "STALE", "HIGH", "SIMULATED"].includes(value) ? "warn" : "muted"
   return <span className={`status status-${tone}`}><i aria-hidden="true" />{statusName(value)}</span>
 }
 

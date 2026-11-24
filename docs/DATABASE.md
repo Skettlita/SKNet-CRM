@@ -55,5 +55,10 @@ ICMP: cinco paquetes, pérdida superior a 30% cuenta como fallo, RTT superior a 
 - La revisión `0005_enterprise` agrega campos sobre las tablas existentes, un índice por empresa para IP de gestión reservada sin collector, un índice de actividad y permisos ISP. Mantiene las relaciones compuestas y el índice por collector para equipos ya asignados.
 - La IPv4 de gestión se guarda en `crm.devices.ip_address`. Dos empresas pueden reservar la misma IP. Sin collector, la reserva se controla entre dispositivos activos con intención de monitoreo de la misma empresa. Con collector, se conserva la regla de unicidad del modelo. Los equipos sin monitoreo ni collector pueden existir sin IP.
 - `monitoring_requested` representa la intención de monitoreo y consume el cupo cuando el dispositivo está activo. `monitoring_enabled` conserva su significado operativo y requiere un collector. La fase solo prepara `ICMP_CONFIG`. El código comercial ICMP sigue sin implementación operativa.
+
+## Fase 5
+
+- `0006_connectivity` añade redes deseadas, diagnóstico, estado del contenedor, revisión aplicada e indicador de simulación al collector. Añade lease temporal y código de error a los trabajos, dirección de bind a las reservas e inventario observado a los pools.
+- La funcionalidad `CONNECTIVITY` controla el acceso ISP. Se reutilizan el índice de un collector vigente por empresa, las asignaciones únicas de red y puerto, las credenciales con hash y la deduplicación de tickets activos. Los roles de conectividad tienen permisos de lectura y escritura separados en ambos ámbitos.
 - `crm.services.service_ip` y su fecha de observación registran la dirección informativa del servicio. El precio y moneda quedan registrados en el contrato comercial del servicio. Los cambios administrativos se registran en el historial; la suspensión o baja de un cliente conserva sus servicios y sus dispositivos.
 - Los sitios de tipo CLIENT_SITE pertenecen a un cliente. Los demás tipos se usan para infraestructura propia. Si un dispositivo pertenece a un sitio de cliente, su cliente se deriva de ese sitio. La vinculación al servicio es opcional y debe coincidir con el sitio.

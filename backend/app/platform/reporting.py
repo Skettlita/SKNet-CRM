@@ -70,13 +70,15 @@ def dashboard(db, permissions):
             ORDER BY e.occurred_at DESC,e.id DESC LIMIT 8
         """)
     if "system.read" in permissions:
+        from app.connectivity.config import stale_seconds
+
         result["infrastructure"] = row(db, """
             SELECT (SELECT count(*) FROM connectivity.collectors WHERE retired_at IS NULL) AS collectors,
                    (SELECT max(received_at) FROM monitoring.icmp_checks) AS last_measurement,
                    (SELECT count(*) FROM connectivity.vpn_tunnels t JOIN connectivity.collectors c
                       ON c.id=t.collector_id AND c.company_id=t.company_id
-                    WHERE t.retired_at IS NULL AND c.retired_at IS NULL AND t.enabled AND c.enabled
-                      AND t.connection_status='CONNECTED' AND t.last_probe_at>now()-interval '30 seconds'
-                      AND c.last_heartbeat_at>now()-interval '30 seconds') AS connected
-        """)
+                    WHERE t.retired_at IS NULL AND c.retired_at IS NULL AND t.enabled AND c.enabled AND NOT c.simulated
+                      AND t.connection_status='CONNECTED' AND t.last_probe_at>now()-make_interval(secs=>:stale)
+                      AND c.last_heartbeat_at>now()-make_interval(secs=>:stale)) AS connected
+        """, stale=stale_seconds())
     return result

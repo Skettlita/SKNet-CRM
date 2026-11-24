@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Activity, Database, RefreshCw } from "lucide-react"
 
+import { DataTable, DataView, dateText, Panel, useData } from "./platform/shared"
 import { Button } from "./shared/Button"
 
 type Availability = "checking" | "ok" | "unavailable" | "unknown"
@@ -37,6 +38,9 @@ function Status({ value }: { value: Availability }) {
 export function FoundationDashboard() {
   const [health, setHealth] = useState<Health>({ api: "checking", database: "checking" })
   const [request, setRequest] = useState(0)
+  const infrastructure = useData<{ mode: string; observed_at: string | null; failures: number; jobs: number; tickets: number }>(
+    "admin", "/connectivity/system", request,
+  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -81,6 +85,17 @@ export function FoundationDashboard() {
             </tbody>
           </table>
         </section>
+        <Panel title="Aprovisionamiento de red"><DataView state={infrastructure}>{(data) => {
+          const recent = data.observed_at && Date.now() - new Date(data.observed_at).getTime() < 60000
+          const worker = data.mode === "disabled" ? "Deshabilitado" : recent ? "Disponible" : "Sin datos recientes"
+          return <DataTable headers={["Componente", "Estado"]}>
+            <tr><th scope="row">Provisioner</th><td>{worker} · {dateText(data.observed_at)}</td></tr>
+            <tr><th scope="row">Adaptador NAT</th><td>{data.mode === "simulation" ? "Simulación DEV" : data.mode === "routeros" ? "RouterOS" : "Deshabilitado"}</td></tr>
+            <tr><th scope="row">Trabajos en curso</th><td>{data.jobs}</td></tr>
+            <tr><th scope="row">Collectors con error</th><td>{data.failures}</td></tr>
+            <tr><th scope="row">Tickets automáticos abiertos</th><td>{data.tickets}</td></tr>
+          </DataTable>
+        }}</DataView></Panel>
     </>
   )
 }

@@ -60,7 +60,7 @@ export function CreateTicket({ account }: { account: Account }) {
   </>
 }
 
-export function TicketList({ scope, account }: { scope: Scope; account: Account }) {
+export function TicketList({ scope, account, automatic = false }: { scope: Scope; account: Account; automatic?: boolean }) {
   const [q, setQuery] = useState("")
   const [company, setCompany] = useState("")
   const [priority, setPriority] = useState("")
@@ -68,9 +68,12 @@ export function TicketList({ scope, account }: { scope: Scope; account: Account 
   const pager = usePager()
   const admin = scope === "admin"
   const companies = useData<Choice[]>("admin", admin ? "/companies/options" : null)
-  const result = useData<Page<Ticket>>(scope, searchPath(endpoint, pager.offset, { q, company_id: company, priority, status }))
+  const result = useData<Page<Ticket>>(scope, searchPath(endpoint, pager.offset, {
+    q, company_id: company, priority, status, automatic: automatic ? "true" : "",
+  }))
   return <>
-    <PageHeading title={admin ? "Soporte SaaS" : "Soporte de SKNet"} description="Solicitudes entre las empresas ISP y SKNet."
+    <PageHeading title={automatic ? "Tickets automáticos" : admin ? "Soporte SaaS" : "Soporte de SKNet"}
+      description={automatic ? "Incidencias registradas por SKNet." : "Solicitudes entre las empresas ISP y SKNet."}
       action={!admin && account.permissions.includes("support.create") &&
         <a className="button button-primary" href="/app/support/new"><Plus size={15} /> Nueva solicitud</a>} />
     <Panel>

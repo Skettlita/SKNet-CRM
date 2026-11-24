@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react"
+import { AdminConnectivity, IspConnectivity } from "../connectivity/Connectivity"
 
 import { CrmCatalog } from "../enterprise/Catalog"
 import { CrmDetail } from "../enterprise/Detail"
@@ -38,10 +39,16 @@ const pageConfig: Record<string, { title: string; permission?: string; scope?: S
   "/support": { title: "Soporte", permission: "support.read" },
   "/support/new": { title: "Nueva solicitud", permission: "support.create", scope: "isp" },
   "/support/:id": { title: "Solicitud de soporte", permission: "support.read" },
+  "/automatic-tickets": { title: "Tickets automáticos", permission: "support.read", scope: "admin" },
   "/audit": { title: "Auditoría", permission: "audit.read", scope: "admin" },
   "/companies/new": { title: "Nueva empresa", permission: "companies.create", scope: "admin" },
   "/support/reset": { title: "Recuperar acceso ISP", permission: "support.reset", scope: "admin" },
   "/infrastructure": { title: "Infraestructura", permission: "infrastructure.read", scope: "isp" },
+  "/connectivity": { title: "Conectividad", permission: "connectivity.read", scope: "isp" },
+  "/collectors": { title: "Collectors", permission: "connectivity.read", scope: "admin" },
+  "/vpn": { title: "Conectividad VPN", permission: "connectivity.read", scope: "admin" },
+  "/network-pools": { title: "Recursos de red", permission: "connectivity.read", scope: "admin" },
+  "/provisioning-jobs": { title: "Trabajos de aprovisionamiento", permission: "connectivity.read", scope: "admin" },
   "/profile": { title: "Perfil" },
   "/preferences": { title: "Preferencias" },
   "/password": { title: "Cambiar contraseña" },
@@ -94,6 +101,11 @@ function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
     content = crmId ? <CrmDetail kind={crmKind} id={crmId} account={account} /> : <CrmCatalog kind={crmKind} account={account} />
   } else {
     switch (key) {
+      case "/connectivity": content = <IspConnectivity account={account} />; break
+      case "/collectors": content = <AdminConnectivity account={account} view="collectors" />; break
+      case "/vpn": content = <AdminConnectivity account={account} view="vpn" />; break
+      case "/network-pools": content = <AdminConnectivity account={account} view="pools" />; break
+      case "/provisioning-jobs": content = <AdminConnectivity account={account} view="jobs" />; break
       case "/infrastructure": content = <InfrastructurePage account={account} />; break
       case "/companies": content = <CompanyList account={account} />; break
       case "/companies/:id": content = <CompanyDetail id={id} account={account} />; break
@@ -103,6 +115,7 @@ function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
       case "/subscriptions": content = <SubscriptionList account={account} />; break
       case "/subscriptions/:id": content = <SubscriptionDetail id={id} account={account} />; break
       case "/support": content = <TicketList scope={scope} account={account} />; break
+      case "/automatic-tickets": content = <TicketList scope="admin" account={account} automatic />; break
       case "/support/new": content = <CreateTicket account={account} />; break
       case "/support/:id": content = <TicketDetail id={id} scope={scope} account={account} />; break
       case "/audit": content = <AuditPage />; break

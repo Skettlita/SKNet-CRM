@@ -19,15 +19,17 @@ SUMMARY = """
 JOIN = "FROM platform.support_tickets t JOIN core.companies c ON c.id=t.company_id"
 
 
-def list_tickets(db, company, priority, status, search, offset, limit):
+def list_tickets(db, company, priority, status, search, offset, limit, *, automatic=False):
     return rows(db, f"""
         SELECT {SUMMARY} {JOIN}
         WHERE (CAST(:company AS uuid) IS NULL OR t.company_id=:company)
            AND (CAST(:priority AS text) IS NULL OR t.priority=:priority)
            AND (CAST(:status AS text) IS NULL OR t.status=:status)
+           AND (NOT :automatic OR t.origin='SYSTEM')
            AND strpos(lower(t.subject),lower(:search)) > 0
         ORDER BY t.opened_at DESC,t.id OFFSET :offset LIMIT :limit
-    """, company=company, priority=priority, status=status, search=search, offset=offset, limit=limit)
+    """, company=company, priority=priority, status=status, search=search, offset=offset, limit=limit,
+        automatic=automatic)
 
 
 def ticket(db, actor, ticket_id, *, lock=False):

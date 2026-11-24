@@ -171,9 +171,10 @@ def edit_subscription(subscription_id: UUID, data: schemas.SubscriptionWrite, re
 @admin.get("/support/tickets")
 def admin_tickets(request: Request, company_id: UUID | None = None,
                   priority: schemas.Priority | None = None, status: schemas.TicketStatus | None = None,
-                  q: str = Search, offset: int = Offset, limit: int = Limit):
+                  q: str = Search, offset: int = Offset, limit: int = Limit, automatic: bool = False):
     with read(request, "support.read") as (db, _):
-        return page(support.list_tickets(db, company_id, priority, status, q.strip(), offset, limit + 1), limit)
+        return page(support.list_tickets(db, company_id, priority, status, q.strip(), offset, limit + 1,
+                                         automatic=automatic), limit)
 
 
 @admin.get("/support/assignees")
