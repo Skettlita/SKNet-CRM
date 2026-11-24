@@ -47,7 +47,7 @@ services:
       SKNET_API_TARGET: http://backend:8000
       CHOKIDAR_USEPOLLING: 'true'
     ports:
-      - "127.0.0.1:${WEB_PORT:-5173}:8080"
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-5173}:8080"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
