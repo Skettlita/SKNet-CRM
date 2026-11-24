@@ -102,7 +102,7 @@ def person_permissions(db, realm, person_id):
 
 def subscription(db, company):
     return row(db, """
-        SELECT s.status, s.ends_at, v.max_users, p.code, v.version,
+        SELECT s.status, s.ends_at, v.max_users, v.max_clients, v.max_devices, v.min_poll_interval_seconds, p.code, v.version,
                (s.status IN ('TRIAL', 'ACTIVE', 'GRACE')
                  AND s.starts_at <= now()
                  AND (s.ends_at IS NULL OR s.ends_at > now())) AS current,

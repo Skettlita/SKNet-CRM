@@ -2,7 +2,7 @@ import { useState } from "react"
 import type { ReactNode } from "react"
 import {
   Activity, Building2, ChevronDown, ChevronLeft, ChevronRight, KeyRound, LayoutDashboard,
-  ClipboardList, CreditCard, History, LifeBuoy, LogOut, Menu, Network, Settings, ShieldCheck, SlidersHorizontal, User, Users, X,
+  Cable, Cpu, MapPin, RadioTower, ClipboardList, CreditCard, History, LifeBuoy, LogOut, Menu, Network, Settings, ShieldCheck, SlidersHorizontal, User, Users, X,
 } from "lucide-react"
 
 import { api, homePath, loginPath, message } from "../auth/api"
@@ -27,6 +27,16 @@ const groups: { label: string; items: { title: string; route: string; icon: type
     { title: "Nueva empresa", route: "/companies/new", icon: Building2, permission: "companies.create", scope: "admin", fallback: "companies.read" },
     { title: "Planes", route: "/plans", icon: CreditCard, permission: "plans.read", scope: "admin" },
     { title: "Suscripciones", route: "/subscriptions", icon: ClipboardList, permission: "subscriptions.read", scope: "admin" },
+  ] },
+  { label: "CRM", items: [
+    { title: "Clientes", route: "/clients", icon: Users, permission: "clients.read", scope: "isp" },
+    { title: "Servicios", route: "/services", icon: Cable, permission: "services.read", scope: "isp" },
+    { title: "Planes de Internet", route: "/internet-plans", icon: ClipboardList, permission: "internet_plans.read", scope: "isp" },
+    { title: "Sitios", route: "/sites", icon: MapPin, permission: "sites.read", scope: "isp" },
+  ] },
+  { label: "Red", items: [
+    { title: "Dispositivos", route: "/devices", icon: Cpu, permission: "devices.read", scope: "isp" },
+    { title: "Infraestructura", route: "/infrastructure", icon: RadioTower, permission: "infrastructure.read", scope: "isp" },
   ] },
   { label: "Soporte", items: [
     { title: "Contactar SKNet", route: "/support", icon: LifeBuoy, permission: "support.read", scope: "isp" },

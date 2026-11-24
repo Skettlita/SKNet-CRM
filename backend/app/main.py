@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth.routes import admin, isp
+from app.crm.routes import router as crm_router
 from app.platform.routes import admin as platform_admin, isp as platform_isp
 from app.db import create_database_engine, create_session_factory
 
@@ -27,11 +28,12 @@ async def lifespan(app: FastAPI):
         engine.dispose()
 
 
-app = FastAPI(title="SKNet API", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="SKNet API", version="0.4.0", lifespan=lifespan)
 app.include_router(isp)
 app.include_router(admin)
 app.include_router(platform_admin)
 app.include_router(platform_isp)
+app.include_router(crm_router)
 
 
 @app.middleware("http")
@@ -53,7 +55,12 @@ def invalid_input(request: Request, error: RequestValidationError):
             "phone": "teléfono", "tax_id": "NIT", "password": "contraseña",
             "confirm_password": "confirmación de contraseña", "identifier": "usuario o correo",
             "monthly_price": "precio mensual", "max_users": "límite de usuarios",
-            "trial_days": "duración de la prueba",
+            "trial_days": "duración de la prueba", "client_code": "código de cliente",
+            "client_type": "tipo de cliente", "site_id": "sitio", "site_type": "tipo de sitio",
+            "plan_id": "plan de Internet", "client_id": "cliente", "device_role": "rol del dispositivo",
+            "ip_address": "IPv4 de gestión", "service_ip": "IP del servicio", "access_mac": "MAC",
+            "interval_seconds": "intervalo", "packet_count": "cantidad de paquetes",
+            "timeout_ms": "timeout", "activated_at": "fecha de activación", "currency": "moneda",
         }
         labels = [fields[item["loc"][-1]] for item in errors if item["loc"] and item["loc"][-1] in fields]
         message = "Revisa estos campos: " + ", ".join(dict.fromkeys(labels)) + "." if labels else "Revisa los datos ingresados."

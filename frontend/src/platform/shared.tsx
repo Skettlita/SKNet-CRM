@@ -89,7 +89,7 @@ export function Search({ label, ...input }: { label: string } & InputHTMLAttribu
 
 const statusNames: Record<string, string> = {
   ACTIVE: "Activa", INACTIVE: "Suspendida", CLOSED: "Cerrada", TRIAL: "Prueba", GRACE: "En gracia",
-  SUSPENDED: "Suspendida", CANCELLED: "Cancelada", UNCONFIGURED: "Sin configurar", UNKNOWN: "Sin datos",
+  PENDING: "Pendiente", SUSPENDED: "Suspendida", CANCELLED: "Cancelada", UNCONFIGURED: "Sin configurar", UNKNOWN: "Sin datos",
   CONNECTED: "Conectada", DISCONNECTED: "Desconectada", STALE: "Sin datos recientes",
   DISABLED: "Deshabilitada", ENABLED: "Habilitado", PLAN_OFF: "Desactivado",
   OPEN: "Abierto", ASSIGNED: "Asignado", IN_PROGRESS: "En curso", RESOLVED: "Resuelto",
@@ -133,7 +133,7 @@ export function ResourceUsage({ usage, subscription }: { usage: Usage; subscript
   const entries = [
     ["Clientes", usage.clients, subscription?.max_clients],
     ["Usuarios activos", usage.users, subscription?.max_users],
-    ["Dispositivos monitoreados", usage.monitored_devices, subscription?.max_devices],
+    ["Dispositivos con monitoreo solicitado o habilitado", usage.monitored_devices, subscription?.max_devices],
   ] as const
   return <DataTable headers={["Recurso", "Utilizados", "Límite"]}>
     {entries.map(([name, count, limit]) => <tr key={name}>

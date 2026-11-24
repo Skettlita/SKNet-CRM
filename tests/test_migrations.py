@@ -21,7 +21,7 @@ def test_migrations_empty_database_and_health(database):
     command.upgrade(config, "head")
     command.upgrade(config, "head")
 
-    assert database.execute("SELECT version_num FROM alembic_version").fetchone() == ("0004_platform",)
+    assert database.execute("SELECT version_num FROM alembic_version").fetchone() == ("0005_enterprise",)
     tables, schemas = database.execute(
         """
         SELECT count(*), count(DISTINCT schemaname)
@@ -42,7 +42,7 @@ def test_migrations_empty_database_and_health(database):
         JOIN platform.plans p ON p.id = v.plan_id
         """
     ).fetchone() == ("TRIAL", 0, "BOB", None, False)
-    assert database.execute("SELECT code FROM platform.features WHERE implemented ORDER BY code").fetchall() == [("ACCESS",), ("SAAS_SUPPORT",)]
+    assert database.execute("SELECT code FROM platform.features WHERE implemented ORDER BY code").fetchall() == [("ACCESS",), ("CRM",), ("ICMP_CONFIG",), ("SAAS_SUPPORT",)]
     assert database.execute("SELECT count(*) FROM core.companies").fetchone() == (0,)
     assert database.execute("SELECT count(*) FROM core.users").fetchone() == (0,)
 

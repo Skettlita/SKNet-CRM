@@ -66,6 +66,17 @@ El plan TRIAL inicial cuesta Bs 0, sin vencimiento ni límite de usuarios. Los c
 5. Desde el [panel ISP](http://127.0.0.1:5173/app), abre **Contactar SKNet** y envía una solicitud. En el panel SaaS, abre **Administración → Soporte**, filtra, asigna un responsable y responde. Comprueba el historial y que una nota interna aparece solo en SaaS.
 6. Abre **Dashboard** y **Auditoría** con el operador autorizado. Los indicadores se calculan a partir de los registros existentes. La auditoría permite consultar cambios de empresa, cuenta, rol, plan, suscripción, configuración y soporte.
 
+## Verificación del CRM empresarial
+
+1. En el [panel ISP](http://127.0.0.1:5173/app), abre **CRM → Clientes** y registra una persona o empresa. En su ficha agrega contactos, una dirección y una nota.
+2. En **CRM → Planes de Internet**, crea el plan que se ofrecerá al abonado. Luego registra un **Sitio de cliente** asociado al cliente y, por separado, un **Nodo** u otro sitio de infraestructura propia.
+3. En **CRM → Servicios**, contrata un plan en un sitio del cliente. Selecciona PPPoE, DHCP, IP estática u otro acceso y registra la IP del servicio solo cuando se conozca. Activa o suspende el servicio desde su ficha y consulta el historial.
+4. En **Red → Dispositivos**, registra un equipo en el sitio del cliente y vincúlalo a su servicio. Registra también un equipo en el nodo propio sin cliente ni servicio. Consulta ambos desde los módulos correspondientes y revisa **Red → Infraestructura**.
+5. En la ficha del dispositivo abre **Monitoreo**. Guarda los parámetros ICMP y solicita monitoreo para un dispositivo activo con una IPv4 de gestión. Se mostrará **Sin datos**. Si la solicitud está deshabilitada, se mostrará **Deshabilitada**.
+6. Revisa el dashboard del ISP y la actividad en la ficha del cliente o del dispositivo. Para un plan SaaS personalizado, habilita **CRM** y, si corresponde, **Configuración ICMP** en una versión del plan. Los permisos se asignan desde **Roles y permisos** y la empresa debe tener una suscripción que incluya la funcionalidad.
+
+El límite de clientes se aplica al total registrado. El límite de dispositivos se aplica a los equipos activos reservados para monitoreo o habilitados. Los equipos de inventario lógico que no solicitan monitoreo no consumen ese cupo.
+
 ## Recuperación
 
 - Desde **Usuarios**, un administrador con permiso puede restablecer otra cuenta de su ámbito. La contraseña temporal es de un solo uso y el cambio es obligatorio. Para un administrador ISP que perdió acceso, el operador autorizado usa **Recuperar acceso ISP** después de verificar su identidad y registrar el motivo.
@@ -105,4 +116,4 @@ Para incluir las pruebas de migración, autenticación y aislamiento, configura 
 
 `compose.yaml` se combina con `compose.dev.yaml`, `compose.test.yaml` o `compose.prod.yaml`. Cada overlay define un nombre de proyecto, redes y volúmenes independientes por proyecto y un puerto web distinto. Usa un archivo de variables separado por ambiente. TEST y PROD quedan preparados para validación posterior. Consulta [entornos](docs/ENVIRONMENTS.md) y [estado de implementación](docs/IMPLEMENTATION_STATUS.md).
 
-La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. El CRM empresarial se aborda en una etapa posterior.
+La interfaz de referencia está en `references/v0-prototype/`. Las decisiones de diseño, arquitectura y alcance se documentan en `docs/`. El panel ISP incorpora CRM y configuración ICMP. El aprovisionamiento y las comprobaciones de red quedan para las fases siguientes.

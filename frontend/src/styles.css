@@ -534,3 +534,13 @@ summary { cursor: pointer; }
 @media (max-width: 900px) {
   .platform-columns { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }
+
+.crm-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+.crm-tabs button { min-height: 34px; padding: 0 9px; border-bottom: 2px solid transparent; font-size: 13px; }
+.crm-tabs button[aria-pressed="true"] { border-bottom-color: var(--primary); color: var(--primary-dark); background: var(--accent); font-weight: 600; }
+.crm-tabs button:hover { color: var(--primary-dark); }
+.crm-relations { align-items: start; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.relation-control { display: grid; gap: 5px; }
+.crm-table-icon { display: inline-block; margin-right: 5px; vertical-align: text-bottom; }
+.crm-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 850px) { .crm-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

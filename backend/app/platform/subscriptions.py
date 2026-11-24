@@ -24,7 +24,7 @@ def usage(db, company):
         SELECT (SELECT count(*) FROM crm.clients WHERE company_id = :id) AS clients,
                (SELECT count(*) FROM core.memberships m JOIN core.users u ON u.id = m.user_id
                    WHERE m.company_id = :id AND m.active AND u.active) AS users,
-               (SELECT count(*) FROM crm.devices WHERE company_id = :id AND monitoring_enabled
+               (SELECT count(*) FROM crm.devices WHERE company_id = :id AND administrative_active AND (monitoring_enabled OR monitoring_requested)
                    AND retired_at IS NULL) AS monitored_devices
     """, id=company)
 

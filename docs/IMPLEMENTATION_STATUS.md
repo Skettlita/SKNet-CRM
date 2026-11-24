@@ -68,3 +68,23 @@
 ### Alcance siguiente
 
 La plataforma calcula límites de clientes y dispositivos y muestra su utilización. La validación en sus futuros puntos de alta se incorpora junto al CRM y monitoreo. La recaudación, los tickets automáticos, el aprovisionamiento y el monitoreo siguen pendientes. En DEV, el dashboard distingue datos ausentes y capacidades todavía sin implementación.
+
+## Fase 4 · CRM empresarial y dispositivos en DEV
+
+- **CRM:** clientes naturales y jurídicos con contactos, direcciones, observaciones, notas e historial. Catálogo de planes de Internet separado de SaaS. Servicios con contratación, precio, moneda, acceso PPPoE/DHCP/estático u otro, IP informativa, MAC y router de acceso. Los cambios de estado son manuales y quedan en el historial.
+- **Red:** sitios de cliente e infraestructura propia, dispositivos lógicos vinculados por sitio y servicio opcional, vista de infraestructura, estado administrativo y preparación ICMP. IPv4 de gestión independiente de la IP del servicio. La fase solo persiste el perfil y la intención de monitoreo. Los estados iniciales son UNKNOWN o DISABLED según la configuración.
+- **Permisos y datos:** el backend verifica la empresa, el permiso y la funcionalidad del plan. Aplican el máximo de clientes registrados y el cupo para dispositivos activos con monitoreo solicitado o habilitado. La misma IP de gestión es válida en dos ISP. Se registran operaciones en auditoría sin contraseñas, cuerpos de notas ni usernames PPPoE.
+- **Interfaz:** se conservó el diseño blanco y morado de SKNet, con tablas compactas, filtros y fichas por secciones. El dashboard ISP usa datos de su empresa y omite los indicadores sin permiso. Las pantallas distinguen ausencia de mediciones y módulos futuros.
+- **Migración `0005_enterprise`:** ampliación de tablas existentes para los campos de CRM, preferencias operativas de dispositivo e índices, sin tablas nuevas. Los planes TRIAL reciben CRM y configuración ICMP. Los roles que ya reunían todos los permisos base de IAM ISP reciben los permisos nuevos. Los roles parciales conservan sus permisos hasta que se les asignen otros. El código ICMP operativo continúa sin habilitar.
+
+### Evidencia de la fase 4
+
+| Comprobación | Resultado |
+|---|---|
+| Suite de PostgreSQL 17.11 temporal | 16 pruebas aprobadas, incluidas las 12 anteriores. Se comprobó el alta y la edición de clientes y contactos, direcciones y notas, sitios propios y de clientes, servicios PPPoE/DHCP/estáticos, historial, dispositivos, configuración ICMP, reutilización de IP entre ISP, asociaciones cruzadas rechazadas, límites, permisos, auditoría y dashboard. La migración desde `0004_platform` conservó registros. Persiste el aviso de Starlette/AnyIO de las fases anteriores. |
+| Build de frontend | TypeScript y Vite compilados. |
+| Navegador y base temporal | Se verificaron la gráfica ISP, las secciones de la ficha, el alta de un abonado jurídico, los vínculos entre servicio y dispositivo, el intervalo ICMP editado, la separación de infraestructura propia y la ausencia de módulos e indicadores CRM para un lector sin permiso. |
+| Docker Compose DEV en Windows | Cuatro servicios saludables y revisión `0005_enterprise (head)`. La comparación antes y después conservó los conteos de empresas, usuarios y CRM. DEV continuó sin collectors ni mediciones. |
+| Persistencia después de reinicios | La suite volvió a iniciar el backend y pudo consultar el dispositivo. Se reinició físicamente PostgreSQL temporal y la misma sesión volvió a consultar el dashboard y el intervalo ICMP editado en navegador. |
+
+El collector, el aprovisionamiento, las mediciones de red y los módulos posteriores quedan pendientes. Los planes personalizados requieren seleccionar CRM o ICMP_CONFIG y asignar la nueva versión a la empresa, según corresponda.

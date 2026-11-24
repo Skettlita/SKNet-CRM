@@ -101,8 +101,13 @@ def principal(db, request, realm) -> Principal:
     permissions = grants
     if realm.isp:
         enabled = set(plan["enabled_features"]) if plan and plan["current"] else set()
+        feature_by_module = {
+            "support": "SAAS_SUPPORT", "icmp": "ICMP_CONFIG",
+            "clients": "CRM", "sites": "CRM", "internet_plans": "CRM", "services": "CRM",
+            "devices": "CRM", "infrastructure": "CRM", "crm_history": "CRM",
+        }
         permissions = {
             code for code in grants
-            if ("SAAS_SUPPORT" if code.startswith("support.") else "ACCESS") in enabled
+            if feature_by_module.get(code.split(".", 1)[0], "ACCESS") in enabled
         }
     return Principal(realm, user, permissions, plan, session["id"], grants)

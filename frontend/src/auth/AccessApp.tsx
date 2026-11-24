@@ -1,5 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from "react"
 
+import { CrmCatalog } from "../enterprise/Catalog"
+import { CrmDetail } from "../enterprise/Detail"
+import { catalogs } from "../enterprise/model"
+import type { Kind } from "../enterprise/model"
 import { FoundationDashboard } from "../FoundationDashboard"
 import { CompanyDetail, CompanyList } from "../platform/Companies"
 import { NewPlan, PlanDetail, PlanList } from "../platform/Plans"
@@ -13,6 +17,8 @@ import { PageHeading, RoleManagement, UserManagement } from "./AccessManagement"
 import { ManualRegistration, ProfilePage, SettingsPage, SupportResetPage } from "./PanelSettings"
 import { ChangePasswordPage, LoginPage, RecoverPage, SignupPage } from "./PublicPages"
 
+const IspDashboard = lazy(() => import("../enterprise/Reporting").then((module) => ({ default: module.IspDashboard })))
+const InfrastructurePage = lazy(() => import("../enterprise/Reporting").then((module) => ({ default: module.InfrastructurePage })))
 const AdminDashboard = lazy(() => import("../platform/Reporting").then((module) => ({ default: module.AdminDashboard })))
 const AuditPage = lazy(() => import("../platform/Reporting").then((module) => ({ default: module.AuditPage })))
 
@@ -35,23 +41,10 @@ const pageConfig: Record<string, { title: string; permission?: string; scope?: S
   "/audit": { title: "Auditoría", permission: "audit.read", scope: "admin" },
   "/companies/new": { title: "Nueva empresa", permission: "companies.create", scope: "admin" },
   "/support/reset": { title: "Recuperar acceso ISP", permission: "support.reset", scope: "admin" },
+  "/infrastructure": { title: "Infraestructura", permission: "infrastructure.read", scope: "isp" },
   "/profile": { title: "Perfil" },
   "/preferences": { title: "Preferencias" },
   "/password": { title: "Cambiar contraseña" },
-}
-
-function Home({ account, scope }: { account: Account; scope: Scope }) {
-  return <>
-    <PageHeading title="Dashboard" description={account.company_name ?? "Administración de la plataforma SKNet."} />
-    <div className="table-panel"><div className="panel-header"><h2>Primeros pasos</h2></div>
-      <div className="panel-body dashboard-start">
-        {account.permissions.includes("users.read") && <a href={homePath(scope) + "/users"}>Consultar usuarios</a>}
-        {account.permissions.includes("roles.read") && <a href={homePath(scope) + "/roles"}>Consultar roles y permisos</a>}
-        {account.permissions.includes("settings.read") && <a href="/admin/settings">Consultar configuración del registro</a>}
-        <a href={homePath(scope) + "/profile"}>Revisar mi perfil</a>
-      </div>
-    </div>
-  </>
 }
 
 function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
@@ -83,7 +76,11 @@ function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
   const match = /^\/(companies|plans|subscriptions|support)\/([0-9a-f-]{36})$/i.exec(route)
   const key = match ? "/" + match[1] + "/:id" : route
   const id = match?.[2] ?? ""
-  const page = pageConfig[key]
+  const crmMatch = /^\/(clients|internet-plans|services|sites|devices)(?:\/([0-9a-f-]{36}))?$/i.exec(route)
+  const crmKind = crmMatch?.[1].toLowerCase() as Kind | undefined
+  const crmId = crmMatch?.[2]
+  const spec = crmKind ? catalogs[crmKind] : undefined
+  const page = spec ? { title: spec.title, scope: "isp", permission: spec.permission + ".read" } : pageConfig[key]
   const allowed = page && (!page.scope || scope === page.scope) &&
     (!page.permission || account.permissions.includes(page.permission))
 
@@ -93,8 +90,11 @@ function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
     content = <><PageHeading title={page ? "Acceso restringido" : "Página no encontrada"} />
       <p className="panel-message">{planInactive ? "Tu suscripción no habilita el acceso a este módulo."
         : page ? "Tu cuenta no tiene acceso a esta pantalla." : "Revisa la dirección o usa el menú lateral."}</p></>
+  } else if (crmKind) {
+    content = crmId ? <CrmDetail kind={crmKind} id={crmId} account={account} /> : <CrmCatalog kind={crmKind} account={account} />
   } else {
     switch (key) {
+      case "/infrastructure": content = <InfrastructurePage account={account} />; break
       case "/companies": content = <CompanyList account={account} />; break
       case "/companies/:id": content = <CompanyDetail id={id} account={account} />; break
       case "/plans": content = <PlanList account={account} />; break
@@ -116,7 +116,7 @@ function ProtectedPanel({ scope, route }: { scope: Scope; route: string }) {
         content = <ProfilePage scope={scope} account={account} changed={refresh}
           view={route.slice(1) as "profile" | "preferences" | "password"} />
         break
-      default: content = scope === "admin" ? <AdminDashboard /> : <Home account={account} scope={scope} />
+      default: content = scope === "admin" ? <AdminDashboard /> : <IspDashboard account={account} />
     }
   }
   return <AppShell account={account} scope={scope} title={allowed ? page.title : "SKNet"}><Suspense fallback={<p role="status">Cargando…</p>}>{content}</Suspense></AppShell>
